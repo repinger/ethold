@@ -106,7 +106,7 @@ _Note: Commands from unauthorized Telegram accounts/chats are silently ignored._
 
 ---
 
-## Running with Docker
+## Running with Docker (Recommended)
 
 Start with Docker Compose (includes persistence volume):
 
@@ -124,34 +124,4 @@ Stop:
 
 ```bash
 docker compose down
-```
-
----
-
-## Running as a Systemd Service
-
-Create `/etc/systemd/system/ethold.service`:
-
-```ini
-[Unit]
-Description=ETHOL Daemon
-After=network.target
-
-[Service]
-Type=simple
-User=YOUR_USER
-WorkingDirectory=/home/YOUR_USER/ethold
-ExecStart=/home/YOUR_USER/ethold/ethold -config /home/YOUR_USER/ethold/.env
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now ethold
 ```

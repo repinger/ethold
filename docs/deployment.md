@@ -1,6 +1,6 @@
 # Deployment
 
-This document describes how to deploy the application with Docker or as a standalone binary.
+This document describes how to deploy the application with Docker (recommended) or as a standalone binary.
 
 ## Deployment with Docker Compose (Recommended)
 
@@ -57,44 +57,9 @@ Compile a stripped binary with disabled CGO:
 CGO_ENABLED=0 go build -ldflags="-s -w" -o ethold ./cmd/ethold
 ```
 
-### Systemd Service Configuration
+### Running the Binary
 
-1. Copy the binary to a system directory:
-   ```bash
-   sudo cp ethold /usr/local/bin/
-   ```
-
-2. Create a dedicated configuration directory:
-   ```bash
-   sudo mkdir -p /etc/ethol /var/lib/ethol
-   sudo cp .env /etc/ethol/.env
-   sudo chmod 600 /etc/ethol/.env
-   ```
-
-3. Create the unit file at `/etc/systemd/system/ethold.service`:
-   ```ini
-   [Unit]
-   Description=ETHOL Daemon
-   After=network.target
-
-   [Service]
-   Type=simple
-   ExecStart=/usr/local/bin/ethold --config /etc/ethol/.env --state /var/lib/ethol/attended_keys.json
-   Restart=always
-   RestartSec=10
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-4. Enable and start the systemd service:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable ethold
-   sudo systemctl start ethold
-   ```
-
-5. Verify service status:
-   ```bash
-   sudo systemctl status ethold
-   ```
+Run directly with flags or environment variables:
+```bash
+./ethold --config .env --state attended_keys.json
+```
