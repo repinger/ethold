@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,6 +21,7 @@ type TelegramNotifier struct {
 	baseURL    string
 	token      string
 	chatID     string
+	chatIDInt  int64
 }
 
 func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *TelegramNotifier {
@@ -32,12 +34,14 @@ func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *Te
 	if client != nil {
 		pollClient.Transport = client.Transport
 	}
+	cid, _ := strconv.ParseInt(strings.TrimSpace(chatID), 10, 64)
 	return &TelegramNotifier{
 		client:     client,
 		pollClient: pollClient,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		token:      token,
 		chatID:     chatID,
+		chatIDInt:  cid,
 	}
 }
 
@@ -253,7 +257,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 		if u.Message == nil {
 			continue
 		}
-		if fmt.Sprintf("%d", u.Message.Chat.ID) != tn.chatID {
+		if (tn.chatIDInt != 0 && u.Message.Chat.ID != tn.chatIDInt) || (tn.chatIDInt == 0 && strconv.FormatInt(u.Message.Chat.ID, 10) != tn.chatID) {
 			slog.Warn("Ignoring Telegram command from unauthorized chat", "chat_id", u.Message.Chat.ID)
 			continue
 		}
