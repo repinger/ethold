@@ -20,7 +20,7 @@ type ScannerStatus struct {
 	LastScanDuration time.Duration
 	LastScanErr      error
 	LastAttended     int
-	CurrentMode      ScheduleMode
+	ScanPlan         ScanPlan
 	TotalAttended    int
 	TodayAttended    int
 	Paused           bool
@@ -52,6 +52,7 @@ type Scanner struct {
 	lastScanDur  time.Duration
 	lastScanErr  error
 	lastAttended int
+	currentPlan  ScanPlan
 	paused       atomic.Bool
 	minDelay     time.Duration
 	maxDelay     time.Duration
@@ -95,7 +96,12 @@ func (s *Scanner) Status() ScannerStatus {
 	lastScanDur := s.lastScanDur
 	lastScanErr := s.lastScanErr
 	lastAttended := s.lastAttended
+	plan := s.currentPlan
 	s.statusMu.RUnlock()
+
+	if plan.Interval == 0 {
+		plan = NextScanPlan(NowWIB(), nil)
+	}
 
 	minD, maxD := s.PresenceDelay()
 	minS, maxS := s.WorkerStagger()
@@ -136,7 +142,7 @@ func (s *Scanner) Status() ScannerStatus {
 		LastScanDuration: lastScanDur,
 		LastScanErr:      lastScanErr,
 		LastAttended:     lastAttended,
-		CurrentMode:      GetScheduleMode(NowWIB()),
+		ScanPlan:         plan,
 		TotalAttended:    totalAttended,
 		TodayAttended:    todayAttended,
 		Paused:           s.paused.Load(),
@@ -316,6 +322,11 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			activeCourseStr = html.EscapeString(status.ActiveCourse)
 		}
 
+		modeStr := "Background Sweep"
+		if status.ScanPlan.InWindow {
+			modeStr = "Active Session"
+		}
+
 		return fmt.Sprintf(
 			"📊 <b>Status Sistem</b>\n\n"+
 				"👤 <b>Pengguna:</b> %s\n"+
@@ -328,7 +339,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 				"• <b>Hari Ini:</b> %d entri\n"+
 				"• <b>Total Tersimpan:</b> %d entri\n\n"+
 				"📅 <b>Jadwal & Data:</b>\n"+
-				"• <b>Sesi Aktif:</b> %s\n"+
+				"• <b>Active Session:</b> %s\n"+
 				"• <b>Total Terdaftar:</b> %d item\n\n"+
 				"🛠️ <b>Diagnostik:</b>\n"+
 				"• <b>Worker:</b> %d\n"+
@@ -338,8 +349,8 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			userStr,
 			stateStr,
 			uptime,
-			html.EscapeString(status.CurrentMode.Name),
-			status.CurrentMode.Interval,
+			modeStr,
+			status.ScanPlan.Interval,
 			lastScanStr,
 			resultStr,
 			status.TodayAttended,
@@ -600,11 +611,15 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 }
 
 func (s *Scanner) ScanOnce(ctx context.Context) (int, error) {
+	return s.ScanCourses(ctx, nil)
+}
+
+func (s *Scanner) ScanCourses(ctx context.Context, targetCourses []Course) (int, error) {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
 
 	scanStart := time.Now()
-	attended, err := s.scanOnceInternal(ctx)
+	attended, err := s.scanCoursesInternal(ctx, targetCourses)
 	scanDur := time.Since(scanStart)
 
 	s.statusMu.Lock()
@@ -617,17 +632,23 @@ func (s *Scanner) ScanOnce(ctx context.Context) (int, error) {
 	return attended, err
 }
 
-func (s *Scanner) scanOnceInternal(ctx context.Context) (int, error) {
+func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Course) (int, error) {
 	if err := s.auth.EnsureSession(ctx); err != nil {
 		return 0, fmt.Errorf("ensure session: %w", err)
 	}
 
-	courses, err := s.courses.GetCourses(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("get courses: %w", err)
+	var courses []Course
+	if len(targetCourses) > 0 {
+		courses = targetCourses
+	} else {
+		var err error
+		courses, err = s.courses.GetCourses(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("get courses: %w", err)
+		}
 	}
 	if len(courses) == 0 {
-		slog.Debug("No enrolled courses found")
+		slog.Debug("No courses to scan")
 		return 0, nil
 	}
 
@@ -784,6 +805,37 @@ func (s *Scanner) scanOnceInternal(ctx context.Context) (int, error) {
 	return attendedCount, nil
 }
 
+func (s *Scanner) computeScanPlan(ctx context.Context, now time.Time) ScanPlan {
+	if s.academic == nil || s.courses == nil {
+		return NextScanPlan(now, nil)
+	}
+
+	tahun, semester, err := s.courses.ActivePeriod(ctx)
+	if err != nil {
+		slog.Warn("Failed to get active period for scan plan", "error", err)
+		return NextScanPlan(now, nil)
+	}
+
+	items, err := s.academic.GetSchedule(ctx, tahun, semester)
+	if err != nil {
+		slog.Warn("Failed to get schedule for scan plan, falling back to active interval", "error", err)
+		return ScanPlan{
+			Interval: ActiveInterval,
+			Courses:  nil,
+			InWindow: false,
+		}
+	}
+
+	courses, err := s.courses.GetCourses(ctx)
+	if err != nil {
+		slog.Warn("Failed to get courses for scan plan", "error", err)
+		return NextScanPlan(now, nil)
+	}
+
+	windows := ComputeScanWindows(items, courses, now)
+	return NextScanPlan(now, windows)
+}
+
 func (s *Scanner) Run(ctx context.Context) error {
 	slog.Info("Starting auto-presence daemon loop")
 
@@ -796,17 +848,26 @@ func (s *Scanner) Run(ctx context.Context) error {
 		}
 
 		now := NowWIB()
-		mode := GetScheduleMode(now)
-		if mode.Name != s.lastMode {
-			slog.Info("Operational mode changed", "mode", mode.Name, "interval", mode.Interval)
-			s.lastMode = mode.Name
+		plan := s.computeScanPlan(ctx, now)
+
+		s.statusMu.Lock()
+		s.currentPlan = plan
+		s.statusMu.Unlock()
+
+		modeName := "BACKGROUND"
+		if plan.InWindow {
+			modeName = "AKTIF"
+		}
+		if modeName != s.lastMode {
+			slog.Info("Operational mode changed", "mode", modeName, "interval", plan.Interval, "courses", len(plan.Courses))
+			s.lastMode = modeName
 		}
 
 		if s.paused.Load() {
 			slog.Debug("Auto-presence scanner is paused, skipping cycle")
 		} else {
 			scanStart := time.Now()
-			attended, err := s.ScanOnce(ctx)
+			attended, err := s.ScanCourses(ctx, plan.Courses)
 			if err != nil {
 				slog.Error("Scan cycle error", "error", err)
 			} else if attended > 0 {
@@ -814,7 +875,12 @@ func (s *Scanner) Run(ctx context.Context) error {
 			}
 		}
 
-		timer := time.NewTimer(s.calculateScanInterval(mode.Interval))
+		waitInterval := plan.Interval
+		if plan.InWindow || plan.Interval >= BackgroundInterval {
+			waitInterval = s.calculateScanInterval(plan.Interval)
+		}
+
+		timer := time.NewTimer(waitInterval)
 		select {
 		case <-ctx.Done():
 			timer.Stop()

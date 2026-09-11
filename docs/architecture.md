@@ -21,7 +21,7 @@ The program runs as a long-lived service or as a single-scan command.
 |                         Scanner (Daemon Loop)                           |
 |                                                                         |
 |  +------------------+  +------------------+  +-----------------------+  |
-|  |  Schedule Modes  |  |   Worker Pool    |  | Telegram Command Bus  |  |
+|  |  Scan Scheduler  |  |   Worker Pool    |  | Telegram Command Bus  |  |
 |  +------------------+  +------------------+  +-----------------------+  |
 +----+-------------+--------------+-----------------+----------------+----+
      |             |              |                 |                |

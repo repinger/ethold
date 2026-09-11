@@ -121,21 +121,21 @@ This file inspects and submits course attendance.
 
 ## 6. Scheduler (`scheduler.go`)
 
-This file manages scan timing based on the current time in Western Indonesia Time (WIB, UTC+7).
+This file manages schedule-driven scan timing based on class schedules and Western Indonesia Time (WIB, UTC+7).
 
-### Schedule Modes
+### Scan Tiers
 
-| Mode Name | Time Window (WIB) | Base Interval |
-|---|---|---|
-| `ISTIRAHAT_MALAM` | 21:30 to 04:00 | 300 seconds (5 minutes) |
-| `SIAGA_SUBUH` | 04:00 to 06:30 | 180 seconds (3 minutes) |
-| `SIAGA_NORMAL` | 06:30 to 21:30 | 60 seconds (1 minute) |
+| Tier | Condition | Base Interval | Scope |
+|---|---|---|---|
+| Active Window | Inside class time window (`start - 15m` to `end + 20m`) | 60 seconds | Targeted course(s) only |
+| Background Sweep | Outside active class windows | 15 minutes | All enrolled courses (ad-hoc catch) |
 
 ### Primary Functions
 
 - `NowWIB() time.Time`: Returns the current time in the WIB timezone.
 - `TodayDate(t time.Time) string`: Returns date formatted as `YYYY-MM-DD`.
-- `GetScheduleMode(t time.Time) ScheduleMode`: Returns the active interval configuration.
+- `ComputeScanWindows(items []ScheduleItem, courses []Course, day time.Time) []ScanWindow`: Calculates and merges active scan windows for a given day.
+- `NextScanPlan(now time.Time, windows []ScanWindow) ScanPlan`: Computes scan target courses and wait duration for the next cycle.
 
 ---
 
