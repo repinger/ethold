@@ -959,8 +959,8 @@ func TestScanner_StatusFormattingDetails(t *testing.T) {
 	if !strings.Contains(reply, "Hari Ini:</b> 1 entri") {
 		t.Errorf("expected '1 entri', got: %s", reply)
 	}
-	if !strings.Contains(reply, "Worker:</b> 2") {
-		t.Errorf("expected 'Worker:</b> 2', got: %s", reply)
+	if strings.Contains(reply, "Diagnostik:") || strings.Contains(reply, "Worker:</b>") {
+		t.Errorf("expected diagnostik/worker removed from /status, got: %s", reply)
 	}
 	if !strings.Contains(reply, "Hasil:</b> -") {
 		t.Errorf("expected 'Hasil:</b> -', got: %s", reply)

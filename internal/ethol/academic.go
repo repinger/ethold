@@ -88,6 +88,28 @@ func (am *AcademicManager) InvalidateAttendanceCache() {
 	am.attendanceCache = make(map[string]attendanceCacheEntry)
 }
 
+type AcademicCacheStats struct {
+	SchedulesCount  int
+	TasksCount      int
+	MaterialsCount  int
+	VideosCount     int
+	AttendanceCount int
+	ProcessedNotifs int
+}
+
+func (am *AcademicManager) CacheStats() AcademicCacheStats {
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+	return AcademicCacheStats{
+		SchedulesCount:  len(am.scheduleCache),
+		TasksCount:      len(am.taskCache),
+		MaterialsCount:  len(am.materialCache),
+		VideosCount:     len(am.videoCache),
+		AttendanceCount: len(am.attendanceCache),
+		ProcessedNotifs: len(am.processedNotifIDs),
+	}
+}
+
 func parseCount(v any) int {
 	if v == nil {
 		return 0

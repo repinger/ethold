@@ -114,6 +114,15 @@ func (cm *CourseManager) CachedActivePeriod() (int, int, bool) {
 	return 0, 0, false
 }
 
+func (cm *CourseManager) CacheAge() (time.Duration, bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	if cm.lastUpdated.IsZero() {
+		return 0, false
+	}
+	return time.Since(cm.lastUpdated), true
+}
+
 func (cm *CourseManager) GetCourses(ctx context.Context) ([]Course, error) {
 	cm.mu.RLock()
 	if len(cm.cache) > 0 && time.Since(cm.lastUpdated) < cm.ttl {

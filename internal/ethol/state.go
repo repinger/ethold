@@ -79,6 +79,12 @@ func NewStateManager(path string) (*StateManager, error) {
 	return sm, nil
 }
 
+func (sm *StateManager) Path() string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.path
+}
+
 func (sm *StateManager) Has(key string) bool {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()

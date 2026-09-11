@@ -275,6 +275,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return "🤖 <b>ETHOL Auto-Presence Bot</b>\n\n" +
 			"Perintah yang tersedia:\n" +
 			"• /status - Status daemon dan scanner\n" +
+			"• /debug - Diagnostik sistem dan informasi debug mendalam\n" +
 			"• /check - Jalankan pemindaian presensi sekarang\n" +
 			"• /courses - Daftar mata kuliah yang dipantau\n" +
 			"• /jadwal - Jadwal perkuliahan hari ini & pekan ini\n" +
@@ -340,12 +341,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 				"• <b>Total Tersimpan:</b> %d entri\n\n"+
 				"📅 <b>Jadwal & Data:</b>\n"+
 				"• <b>Active Session:</b> %s\n"+
-				"• <b>Total Terdaftar:</b> %d item\n\n"+
-				"🛠️ <b>Diagnostik:</b>\n"+
-				"• <b>Worker:</b> %d\n"+
-				"• <b>Delay:</b> %v - %v\n"+
-				"• <b>Stagger:</b> %v - %v\n"+
-				"• <b>Runtime:</b> %d goroutines | %.1f MB",
+				"• <b>Total Terdaftar:</b> %d item",
 			userStr,
 			stateStr,
 			uptime,
@@ -357,14 +353,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			status.TotalAttended,
 			activeCourseStr,
 			status.CourseCount,
-			status.WorkerCount,
-			status.MinDelay,
-			status.MaxDelay,
-			status.MinStagger,
-			status.MaxStagger,
-			status.Goroutines,
-			status.AllocMemMB,
 		)
+
+	case "/debug":
+		return s.handleDebug(ctx)
 
 	case "/pause":
 		s.paused.Store(true)
