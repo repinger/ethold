@@ -110,7 +110,7 @@ func (s *Scanner) Status() ScannerStatus {
 	todayAttended := 0
 	if s.state != nil {
 		totalAttended = s.state.Count()
-		todayAttended = len(s.state.KeysWithPrefix(TodayDate(NowWIB())))
+		todayAttended = s.state.CountWithPrefix(TodayDate(NowWIB()))
 	}
 
 	var user *UserInfo
@@ -132,10 +132,6 @@ func (s *Scanner) Status() ScannerStatus {
 		}
 	}
 
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	allocMB := float64(m.Alloc) / (1024 * 1024)
-
 	return ScannerStatus{
 		StartTime:        s.startTime,
 		LastScanTime:     lastScanTime,
@@ -155,7 +151,6 @@ func (s *Scanner) Status() ScannerStatus {
 		ActiveCourse:     activeCourse,
 		CourseCount:      courseCount,
 		Goroutines:       runtime.NumGoroutine(),
-		AllocMemMB:       allocMB,
 	}
 }
 
@@ -756,7 +751,7 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 			continue
 		}
 
-		todayKey := fmt.Sprintf("%s_%s", todayStr, res.key)
+		todayKey := todayStr + "_" + res.key
 		if s.state.Has(res.key) || s.state.Has(todayKey) {
 			slog.Debug("Active presence already recorded", "course", res.course.CourseName(), "key", res.key)
 			continue
