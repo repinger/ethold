@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -160,5 +161,40 @@ func TestAuthManager_Relogin(t *testing.T) {
 	}
 	if reUser == nil || reUser.Nama != "Siti Rahma" {
 		t.Errorf("unexpected user from relogin: %+v", reUser)
+	}
+}
+
+func BenchmarkExtractCASForm(b *testing.B) {
+	htmlData := `
+<!DOCTYPE html>
+<html>
+<head><title>CAS Login</title><meta charset="utf-8"/></head>
+<body>
+<div id="container">
+	<div class="header"><h1>ETHOL CAS SSO</h1></div>
+	<div class="content">
+		<form id="fm1" action="/cas/login?service=test" method="post">
+			<input type="hidden" name="lt" value="LT-1234567890" />
+			<input type="hidden" name="execution" value="e1s1" />
+			<input type="hidden" name="_eventId" value="submit" />
+			<div class="row">
+				<label for="username">Username</label>
+				<input type="text" id="username" name="username" value="" />
+			</div>
+			<div class="row">
+				<label for="password">Password</label>
+				<input type="password" id="password" name="password" value="" />
+			</div>
+			<div class="row btn">
+				<input type="submit" name="submit" value="LOGIN" />
+			</div>
+		</form>
+	</div>
+</div>
+</body>
+</html>`
+	b.ResetTimer()
+	for b.Loop() {
+		_, _, _ = extractCASForm(strings.NewReader(htmlData))
 	}
 }

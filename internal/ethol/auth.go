@@ -1,6 +1,7 @@
 package ethol
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -189,35 +190,42 @@ func extractCASForm(r io.Reader) (string, url.Values, error) {
 					return "", nil, errors.New("CAS form fm1 not found")
 				}
 				return action, values, nil
-			} else {
-				return "", nil, err
 			}
+			return "", nil, z.Err()
 
 		case html.StartTagToken, html.SelfClosingTagToken:
-			tok := z.Token()
-			if !inForm && tok.Data == "form" {
+			tagName, _ := z.TagName()
+			if !inForm && bytes.Equal(tagName, []byte("form")) {
 				var isFM1 bool
 				var formAction string
-				for _, attr := range tok.Attr {
-					if attr.Key == "id" && attr.Val == "fm1" {
+				for {
+					key, val, more := z.TagAttr()
+					if bytes.Equal(key, []byte("id")) && bytes.Equal(val, []byte("fm1")) {
 						isFM1 = true
 					}
-					if attr.Key == "action" {
-						formAction = attr.Val
+					if bytes.Equal(key, []byte("action")) {
+						formAction = string(val)
+					}
+					if !more {
+						break
 					}
 				}
 				if isFM1 {
 					inForm = true
 					action = formAction
 				}
-			} else if inForm && tok.Data == "input" {
+			} else if inForm && bytes.Equal(tagName, []byte("input")) {
 				var name, val string
-				for _, attr := range tok.Attr {
-					if attr.Key == "name" {
-						name = attr.Val
+				for {
+					key, value, more := z.TagAttr()
+					if bytes.Equal(key, []byte("name")) {
+						name = string(value)
 					}
-					if attr.Key == "value" {
-						val = attr.Val
+					if bytes.Equal(key, []byte("value")) {
+						val = string(value)
+					}
+					if !more {
+						break
 					}
 				}
 				if name != "" {
@@ -226,8 +234,8 @@ func extractCASForm(r io.Reader) (string, url.Values, error) {
 			}
 
 		case html.EndTagToken:
-			tok := z.Token()
-			if inForm && tok.Data == "form" {
+			tagName, _ := z.TagName()
+			if inForm && bytes.Equal(tagName, []byte("form")) {
 				return action, values, nil
 			}
 		}
