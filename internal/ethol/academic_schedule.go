@@ -285,16 +285,16 @@ func (am *AcademicManager) FormatScheduleText(ctx context.Context, now time.Time
 }
 
 func parseClockToTime(clockStr string, base time.Time) (time.Time, error) {
-	clockStr = strings.ReplaceAll(clockStr, ".", ":")
-	parts := strings.Split(strings.TrimSpace(clockStr), ":")
-	if len(parts) < 2 {
+	s := strings.TrimSpace(clockStr)
+	sep := strings.IndexAny(s, ":.")
+	if sep <= 0 || sep+1 >= len(s) {
 		return time.Time{}, fmt.Errorf("invalid clock time: %q", clockStr)
 	}
-	hour, err := strconv.Atoi(parts[0])
+	hour, err := strconv.Atoi(s[:sep])
 	if err != nil {
 		return time.Time{}, err
 	}
-	min, err := strconv.Atoi(parts[1])
+	min, err := strconv.Atoi(s[sep+1:])
 	if err != nil {
 		return time.Time{}, err
 	}

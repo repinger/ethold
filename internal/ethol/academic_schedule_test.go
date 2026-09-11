@@ -264,3 +264,11 @@ func TestAcademicManager_GetActiveCourse_Priority(t *testing.T) {
 		t.Errorf("expected no active course when item.Kuliah > 0 doesn't match, got %+v", activeNoMatch)
 	}
 }
+
+func BenchmarkParseClockToTime(b *testing.B) {
+	now := time.Date(2026, 9, 11, 0, 0, 0, 0, WIBLocation)
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = parseClockToTime("08:30", now)
+	}
+}
