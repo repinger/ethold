@@ -114,8 +114,8 @@ func NewHTTPClient() (*http.Client, error) {
 	}
 
 	transport := &http.Transport{
-		MaxIdleConns:        20,
-		MaxIdleConnsPerHost: 10,
+		MaxIdleConns:        64,
+		MaxIdleConnsPerHost: 32,
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
