@@ -1,6 +1,6 @@
-# ETHOL Auto-Presence Documentation
+# Ethold Documentation
 
-This document gives an overview of the ETHOL Auto-Presence project.
+This document gives an overview of the Ethold project.
 The software runs as a background service.
 It records student attendance automatically on the ETHOL PENS platform.
 
@@ -39,13 +39,13 @@ Follow these steps to run the software:
 2. Open the `.env` file in an editor. Enter your PENS username and password.
 3. Build the program:
    ```bash
-   go build -o ethol-autopresence ./cmd/ethol-autopresence
+   go build -o ethold ./cmd/ethold
    ```
 4. Run the program for one check:
    ```bash
-   ./ethol-autopresence --once
+   ./ethold --once
    ```
 5. Run the program as a service:
    ```bash
-   ./ethol-autopresence
+   ./ethold
    ```

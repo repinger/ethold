@@ -1,6 +1,6 @@
 .env
 *.json
-ethol-autopresence
+ethold
 .git
 .gitignore
 README.md

@@ -13,7 +13,7 @@ You must install these tools on your development computer:
 ```
 .
 ├── cmd/
-│   └── ethol-autopresence/
+│   └── ethold/
 │       └── main.go           # CLI flags and service initialization
 ├── internal/
 │   └── ethol/                # Single flat package containing all modules
@@ -42,7 +42,7 @@ You must install these tools on your development computer:
 
 Compile the executable into the current directory:
 ```bash
-go build -o ethol-autopresence ./cmd/ethol-autopresence
+go build -o ethold ./cmd/ethold
 ```
 
 Run static analysis checks:

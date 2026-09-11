@@ -1,4 +1,4 @@
-# ETHOL Auto-Presence (Go)
+# Ethold (Go)
 
 Lightweight, high-performance automated attendance daemon for E-THOL PENS.
 
@@ -52,14 +52,14 @@ Auto-presence is disabled by default. Set `ETHOL_AUTO_PRESENCE=true` to enable a
 Run continuously as a daemon:
 
 ```bash
-go build -o ethol-autopresence ./cmd/ethol-autopresence
-./ethol-autopresence
+go build -o ethold ./cmd/ethold
+./ethold
 ```
 
 Run a single scan pass (suitable for cron):
 
 ```bash
-./ethol-autopresence -once
+./ethold -once
 ```
 
 Run test suite:
@@ -130,18 +130,18 @@ docker compose down
 
 ## Running as a Systemd Service
 
-Create `/etc/systemd/system/ethol-autopresence.service`:
+Create `/etc/systemd/system/ethold.service`:
 
 ```ini
 [Unit]
-Description=ETHOL Auto-Presence Daemon
+Description=ETHOL Daemon
 After=network.target
 
 [Service]
 Type=simple
 User=YOUR_USER
-WorkingDirectory=/home/YOUR_USER/ethol-autopresence
-ExecStart=/home/YOUR_USER/ethol-autopresence/ethol-autopresence -config /home/YOUR_USER/ethol-autopresence/.env
+WorkingDirectory=/home/YOUR_USER/ethold
+ExecStart=/home/YOUR_USER/ethold/ethold -config /home/YOUR_USER/ethold/.env
 Restart=always
 RestartSec=10
 
@@ -153,5 +153,5 @@ Enable and start:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now ethol-autopresence
+sudo systemctl enable --now ethold
 ```

@@ -75,15 +75,15 @@ You can control the application using command line flags:
 
 Run directly with CLI credentials:
 ```bash
-./ethol-autopresence --username 1234567890 --password secret_password_here --once
+./ethold --username 1234567890 --password secret_password_here --once
 ```
 
 Run one scan with verbose logging:
 ```bash
-./ethol-autopresence --config /etc/ethol/.env --once --verbose
+./ethold --config /etc/ethol/.env --once --verbose
 ```
 
 Run with 8 worker threads and a custom state file:
 ```bash
-./ethol-autopresence --concurrency 8 --state /var/lib/ethol/state.json
+./ethold --concurrency 8 --state /var/lib/ethol/state.json
 ```

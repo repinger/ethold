@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ethol-autopresence/internal/ethol"
+	"github.com/repinger/ethold/internal/ethol"
 )
 
 func main() {

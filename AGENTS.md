@@ -7,7 +7,7 @@ Go 1.27 daemon that auto-submits attendance on ETHOL PENS via CAS SSO. Single bi
 ## Commands
 
 ```bash
-go build -o ethol-autopresence ./cmd/ethol-autopresence   # build
+go build -o ethold ./cmd/ethold   # build
 go test -v ./...                                           # all tests (stdlib only, no framework)
 go test -v -run TestFoo ./internal/ethol                   # single test
 go vet ./...                                               # vet
@@ -18,7 +18,7 @@ No linter config, no CI, no pre-commit hooks. Tests use `t.TempDir()` for isolat
 ## Structure
 
 ```
-cmd/ethol-autopresence/main.go   # entrypoint, flag parsing, wiring
+cmd/ethold/main.go   # entrypoint, flag parsing, wiring
 internal/ethol/                  # all domain code (flat, single package)
   config.go      # custom .env parser
   client.go      # http.Client with cookie jar

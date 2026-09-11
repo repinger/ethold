@@ -1,7 +1,7 @@
 services:
-  ethol-autopresence:
+  ethold:
     build: .
-    container_name: ethol-autopresence
+    container_name: ethold
     restart: unless-stopped
     # Specify directly or load from optional .env file:
     # environment:

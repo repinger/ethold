@@ -288,7 +288,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 				"• /ping - Cek koneksi bot\n" +
 				"• /help - Tampilkan pesan bantuan"
 		}
-		return "🤖 <b>ETHOL Auto-Presence Bot</b>\n\n" +
+		return "🤖 <b>Ethold Bot</b>\n\n" +
 			"Perintah yang tersedia:\n" +
 			"• /status - Status daemon dan scanner\n" +
 			"• /debug - Diagnostik sistem dan informasi debug mendalam\n" +

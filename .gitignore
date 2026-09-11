@@ -1,6 +1,6 @@
 .env
 credentials.json
 attended_keys.json
-ethol-autopresence
+ethold
 *.log
 *.tmp

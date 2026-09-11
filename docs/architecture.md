@@ -12,7 +12,7 @@ The program runs as a long-lived service or as a single-scan command.
 
 ```
 +-------------------------------------------------------------------------+
-|                        cmd/ethol-autopresence                           |
+|                              cmd/ethold                                 |
 |                               (main.go)                                 |
 +------------------------------------+------------------------------------+
                                      |

@@ -1,4 +1,4 @@
-module github.com/ethol-autopresence
+module github.com/repinger/ethold
 
 go 1.27.1
 

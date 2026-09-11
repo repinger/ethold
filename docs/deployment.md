@@ -15,7 +15,7 @@ Docker Compose provides container isolation, automatic restarts, and persistent 
 1. Clone the project repository to your host:
    ```bash
    git clone <repository-url>
-   cd ethol-autopresence
+   cd ethold
    ```
 
 2. Create your `.env` configuration file:
@@ -54,14 +54,14 @@ You can run the application directly on a Linux server without Docker.
 
 Compile a stripped binary with disabled CGO:
 ```bash
-CGO_ENABLED=0 go build -ldflags="-s -w" -o ethol-autopresence ./cmd/ethol-autopresence
+CGO_ENABLED=0 go build -ldflags="-s -w" -o ethold ./cmd/ethold
 ```
 
 ### Systemd Service Configuration
 
 1. Copy the binary to a system directory:
    ```bash
-   sudo cp ethol-autopresence /usr/local/bin/
+   sudo cp ethold /usr/local/bin/
    ```
 
 2. Create a dedicated configuration directory:
@@ -71,15 +71,15 @@ CGO_ENABLED=0 go build -ldflags="-s -w" -o ethol-autopresence ./cmd/ethol-autopr
    sudo chmod 600 /etc/ethol/.env
    ```
 
-3. Create the unit file at `/etc/systemd/system/ethol.service`:
+3. Create the unit file at `/etc/systemd/system/ethold.service`:
    ```ini
    [Unit]
-   Description=ETHOL Auto-Presence Daemon
+   Description=ETHOL Daemon
    After=network.target
 
    [Service]
    Type=simple
-   ExecStart=/usr/local/bin/ethol-autopresence --config /etc/ethol/.env --state /var/lib/ethol/attended_keys.json
+   ExecStart=/usr/local/bin/ethold --config /etc/ethol/.env --state /var/lib/ethol/attended_keys.json
    Restart=always
    RestartSec=10
 
@@ -90,11 +90,11 @@ CGO_ENABLED=0 go build -ldflags="-s -w" -o ethol-autopresence ./cmd/ethol-autopr
 4. Enable and start the systemd service:
    ```bash
    sudo systemctl daemon-reload
-   sudo systemctl enable ethol
-   sudo systemctl start ethol
+   sudo systemctl enable ethold
+   sudo systemctl start ethold
    ```
 
 5. Verify service status:
    ```bash
-   sudo systemctl status ethol
+   sudo systemctl status ethold
    ```
