@@ -1,0 +1,6 @@
+.env
+*.json
+ethol-autopresence
+.git
+.gitignore
+README.md
