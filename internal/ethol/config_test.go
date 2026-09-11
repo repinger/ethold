@@ -120,3 +120,37 @@ TELEGRAM_CHAT_ID=file_chat
 		t.Errorf("expected chat id 'file_chat' (file fallback), got '%s'", cfg.TelegramChatID)
 	}
 }
+
+func TestLoadConfigAutoPresence(t *testing.T) {
+	cases := []struct {
+		envVal   string
+		expected bool
+	}{
+		{"", false},
+		{"false", false},
+		{"0", false},
+		{"no", false},
+		{"true", true},
+		{"TRUE", true},
+		{"1", true},
+		{"yes", true},
+		{"YES", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.envVal, func(t *testing.T) {
+			t.Setenv("ETHOL_USERNAME", "dummy_user")
+			t.Setenv("ETHOL_PASSWORD", "dummy_pass")
+			t.Setenv("ETHOL_AUTO_PRESENCE", tc.envVal)
+
+			cfg, err := LoadConfig("")
+			if err != nil {
+				t.Fatalf("LoadConfig unexpected error: %v", err)
+			}
+			if cfg.AutoPresence != tc.expected {
+				t.Errorf("ETHOL_AUTO_PRESENCE=%q: expected %v, got %v", tc.envVal, tc.expected, cfg.AutoPresence)
+			}
+		})
+	}
+}
+

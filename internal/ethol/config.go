@@ -14,6 +14,16 @@ type Config struct {
 	Password       string
 	TelegramToken  string
 	TelegramChatID string
+	AutoPresence   bool
+}
+
+func parseBool(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseEnv(data []byte) map[string]string {
@@ -71,6 +81,7 @@ func LoadConfig(path string, overrides ...Config) (*Config, error) {
 		Password:       resolveValue(override.Password, "ETHOL_PASSWORD", env),
 		TelegramToken:  resolveValue(override.TelegramToken, "TELEGRAM_TOKEN", env),
 		TelegramChatID: resolveValue(override.TelegramChatID, "TELEGRAM_CHAT_ID", env),
+		AutoPresence:   override.AutoPresence || parseBool(resolveValue("", "ETHOL_AUTO_PRESENCE", env)),
 	}
 
 	if cfg.Username == "" || cfg.Password == "" {

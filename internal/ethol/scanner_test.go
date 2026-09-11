@@ -992,3 +992,71 @@ func TestScanner_StatusFormattingDetails(t *testing.T) {
 		t.Errorf("expected failure scan result, got: %s", reply)
 	}
 }
+
+func TestScannerAutoPresenceDisabled(t *testing.T) {
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, "http://dummy", "user", "pass")
+	courses := NewCourseManager(client, "http://dummy", 10*time.Minute)
+	notifier := NewTelegramNotifier(client, "http://dummy", "token", "123")
+
+	// presence = nil and state = nil represents auto-presence disabled mode
+	scanner := NewScanner(auth, courses, nil, nil, nil, notifier, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Gated commands should return disabled message
+	for _, cmd := range []string{"/check", "/pause", "/resume", "/today"} {
+		reply := scanner.HandleTelegramCommand(ctx, cmd)
+		if !strings.Contains(reply, "Auto-presensi tidak aktif") {
+			t.Errorf("cmd %s: expected disabled notice, got %q", cmd, reply)
+		}
+	}
+
+	// Help should omit presence-specific commands
+	helpReply := scanner.HandleTelegramCommand(ctx, "/help")
+	for _, omitted := range []string{"/check", "/pause", "/resume", "/today"} {
+		if strings.Contains(helpReply, omitted) {
+			t.Errorf("help reply should not contain %s when auto-presence is disabled, got %q", omitted, helpReply)
+		}
+	}
+	// Help should still include info/academic commands
+	for _, expected := range []string{"/status", "/courses", "/whoami", "/ping", "/help"} {
+		if !strings.Contains(helpReply, expected) {
+			t.Errorf("help reply should contain %s, got %q", expected, helpReply)
+		}
+	}
+
+	// Status should indicate auto-presence is disabled
+	statusReply := scanner.HandleTelegramCommand(ctx, "/status")
+	if !strings.Contains(statusReply, "Tidak Aktif") && !strings.Contains(statusReply, "tidak aktif") {
+		t.Errorf("expected status to show inactive auto-presence, got: %s", statusReply)
+	}
+
+	// ScanOnce should return an error
+	_, scanErr := scanner.ScanOnce(ctx)
+	if scanErr == nil {
+		t.Errorf("expected ScanOnce to fail when presence is disabled, got nil")
+	}
+
+	// Run should exit cleanly when context is cancelled
+	runDone := make(chan error, 1)
+	runCtx, runCancel := context.WithCancel(context.Background())
+	go func() {
+		runDone <- scanner.Run(runCtx)
+	}()
+	runCancel()
+
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Errorf("expected Run to exit cleanly, got %v", err)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("Run timed out waiting for context cancellation")
+	}
+}
+

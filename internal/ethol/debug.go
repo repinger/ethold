@@ -19,13 +19,17 @@ func (s *Scanner) handleDebug(ctx context.Context) string {
 
 	status := s.Status()
 	stateStr := "Aktif"
-	if status.Paused {
+	if s.presence == nil {
+		stateStr = "Tidak Aktif"
+	} else if status.Paused {
 		stateStr = "Dijeda ⏸️"
 	}
 	uptime := time.Since(status.StartTime).Truncate(time.Second)
 
 	modeStr := "Background Sweep"
-	if status.ScanPlan.InWindow {
+	if s.presence == nil {
+		modeStr = "Disabled"
+	} else if status.ScanPlan.InWindow {
 		modeStr = "Active Session"
 	}
 

@@ -272,6 +272,22 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return "🏓 Pong!"
 
 	case "/help", "/start":
+		if s.presence == nil {
+			return "🤖 <b>ETHOL Bot (Info Akademik)</b>\n\n" +
+				"Perintah yang tersedia:\n" +
+				"• /status - Status daemon dan sistem\n" +
+				"• /debug - Diagnostik sistem dan informasi debug mendalam\n" +
+				"• /courses - Daftar mata kuliah yang dipantau\n" +
+				"• /jadwal - Jadwal perkuliahan hari ini & pekan ini\n" +
+				"• /tugas - Daftar tugas perkuliahan aktif\n" +
+				"• /materi - Materi & video perkuliahan\n" +
+				"• /presensi_kelas - Daftar kehadiran sesi presensi aktif\n" +
+				"• /rekap - Rekap kehadiran semester aktif\n" +
+				"• /whoami - Informasi akun ETHOL terhubung\n" +
+				"• /relogin - Paksa perbarui sesi login CAS\n" +
+				"• /ping - Cek koneksi bot\n" +
+				"• /help - Tampilkan pesan bantuan"
+		}
 		return "🤖 <b>ETHOL Auto-Presence Bot</b>\n\n" +
 			"Perintah yang tersedia:\n" +
 			"• /status - Status daemon dan scanner\n" +
@@ -295,7 +311,9 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		status := s.Status()
 
 		stateStr := "Aktif"
-		if status.Paused {
+		if s.presence == nil {
+			stateStr = "Tidak Aktif"
+		} else if status.Paused {
 			stateStr = "Dijeda ⏸️"
 		}
 
@@ -308,7 +326,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 
 		lastScanStr := "Belum ada"
 		resultStr := "-"
-		if !status.LastScanTime.IsZero() {
+		if s.presence == nil {
+			lastScanStr = "Tidak aktif"
+			resultStr = "Tidak aktif"
+		} else if !status.LastScanTime.IsZero() {
 			durStr := status.LastScanDuration.Round(time.Millisecond).String()
 			lastScanStr = fmt.Sprintf("%s (%s)", status.LastScanTime.In(WIBLocation).Format("15:04:05 WIB"), durStr)
 			if status.LastScanErr != nil {
@@ -359,10 +380,16 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return s.handleDebug(ctx)
 
 	case "/pause":
+		if s.presence == nil {
+			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
+		}
 		s.paused.Store(true)
 		return "⏸️ <b>Pemindaian Otomatis Dijeda</b>\nBot tidak akan memindai secara otomatis. Ketik /resume untuk mengaktifkan kembali."
 
 	case "/resume":
+		if s.presence == nil {
+			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
+		}
 		s.paused.Store(false)
 		return "▶️ <b>Pemindaian Otomatis Dilanjutkan</b>\nBot akan kembali memindai sesuai jadwal."
 
@@ -412,6 +439,9 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return strings.TrimRight(b.String(), "\n")
 
 	case "/today":
+		if s.presence == nil || s.state == nil {
+			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
+		}
 		todayStr := TodayDate(NowWIB())
 		todayRecs := s.state.RecordsWithPrefix(todayStr + "_")
 		if len(todayRecs) == 0 {
@@ -439,6 +469,9 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return strings.TrimRight(b.String(), "\n")
 
 	case "/check":
+		if s.presence == nil {
+			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
+		}
 		attended, err := s.ScanOnce(ctx)
 		if err != nil {
 			return fmt.Sprintf("❌ <b>Pemindaian Gagal:</b> %s", html.EscapeString(err.Error()))
@@ -607,6 +640,10 @@ func (s *Scanner) ScanOnce(ctx context.Context) (int, error) {
 }
 
 func (s *Scanner) ScanCourses(ctx context.Context, targetCourses []Course) (int, error) {
+	if s.presence == nil {
+		return 0, errors.New("auto-presence is disabled")
+	}
+
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
 
@@ -829,6 +866,12 @@ func (s *Scanner) computeScanPlan(ctx context.Context, now time.Time) ScanPlan {
 }
 
 func (s *Scanner) Run(ctx context.Context) error {
+	if s.presence == nil {
+		slog.Info("Auto-presence daemon loop disabled")
+		<-ctx.Done()
+		return nil
+	}
+
 	slog.Info("Starting auto-presence daemon loop")
 
 	for {

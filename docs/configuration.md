@@ -32,9 +32,11 @@ The table below lists all supported environment variables:
 | `ETHOL_PASSWORD` | Yes | None | The PENS CAS account password. |
 | `TELEGRAM_TOKEN` | No | None | The API token from BotFather for Telegram updates. |
 | `TELEGRAM_CHAT_ID` | No | None | The Telegram chat ID that receives messages and issues commands. |
+| `ETHOL_AUTO_PRESENCE` | No | `false` | Enables automated attendance scanning and submission (`true`, `1`, `yes`). Disabled by default. |
 
 > **Note:** Both `ETHOL_USERNAME` and `ETHOL_PASSWORD` are required (via flag, system env, or file).
 > If Telegram variables are empty, the application disables the Telegram integration.
+> If `ETHOL_AUTO_PRESENCE` is disabled or unset, the daemon runs in academic-only mode without scanning or submitting attendance.
 
 ## Example File
 
@@ -48,6 +50,9 @@ ETHOL_PASSWORD=secret_password_here
 # Telegram Notification (Optional)
 TELEGRAM_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
 TELEGRAM_CHAT_ID=987654321
+
+# Auto-Presence (Optional, disabled by default)
+ETHOL_AUTO_PRESENCE=true
 ```
 
 ## Command Line Flags

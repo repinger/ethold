@@ -33,11 +33,11 @@ The command parser removes these suffixes before execution.
   - Go runtime memory usage and goroutine count.
 
 #### `/pause`
-- **Description:** Pauses automatic background attendance scanning.
+- **Description:** Pauses automatic background attendance scanning (requires `ETHOL_AUTO_PRESENCE=true`).
 - **Response:** Confirms that automatic scanning is suspended.
 
 #### `/resume`
-- **Description:** Resumes automatic background scanning.
+- **Description:** Resumes automatic background scanning (requires `ETHOL_AUTO_PRESENCE=true`).
 - **Response:** Confirms that automatic scanning is active.
 
 ---
@@ -52,7 +52,7 @@ The command parser removes these suffixes before execution.
 - **Description:** Lists all enrolled courses for the active academic semester.
 
 #### `/today`
-- **Description:** Displays classes scheduled for the current day, including lecture times and room numbers.
+- **Description:** Displays recorded attendance for the current day (requires `ETHOL_AUTO_PRESENCE=true`).
 
 #### `/jadwal`
 - **Description:** Shows the complete weekly class timetable grouped by day.
@@ -74,7 +74,7 @@ The command parser removes these suffixes before execution.
 ## Action Commands
 
 #### `/check`
-- **Description:** Manually triggers an immediate scan of all courses for active presence sessions.
+- **Description:** Manually triggers an immediate scan of all courses for active presence sessions (requires `ETHOL_AUTO_PRESENCE=true`).
 - **Response:** Reports whether any open attendance sessions were found or submitted.
 
 #### `/relogin`

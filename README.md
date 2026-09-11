@@ -38,9 +38,14 @@ ETHOL_PASSWORD=sso_password
 # Optional: Telegram alerts (leave empty to disable)
 TELEGRAM_TOKEN=
 TELEGRAM_CHAT_ID=
+
+# Optional: Auto-presence (set to "true" or "1" to enable; disabled by default)
+ETHOL_AUTO_PRESENCE=
 ```
 
 Credentials can be set via `.env` file, system environment variables (`export ETHOL_USERNAME=...`), or command line flags (`--username`, `--password`).
+
+Auto-presence is disabled by default. Set `ETHOL_AUTO_PRESENCE=true` to enable automatic attendance scanning and submission. Without this, the daemon functions purely as an academic info bot (schedule, assignments, materials, attendance stats).
 
 ### 3. Build & Run
 
