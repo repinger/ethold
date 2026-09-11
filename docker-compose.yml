@@ -1,0 +1,20 @@
+services:
+  ethol-autopresence:
+    build: .
+    container_name: ethol-autopresence
+    restart: unless-stopped
+    # Specify directly or load from optional .env file:
+    # environment:
+    #   - ETHOL_USERNAME=1234567890
+    #   - ETHOL_PASSWORD=secret_password_here
+    #   - TELEGRAM_TOKEN=123456:ABC-DEF
+    #   - TELEGRAM_CHAT_ID=987654321
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - state:/app/data
+    command: ["--state", "/app/data/attended_keys.json"]
+
+volumes:
+  state:
