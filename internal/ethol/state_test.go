@@ -136,3 +136,55 @@ func TestStateManager_LegacyMigration(t *testing.T) {
 	}
 }
 
+func TestStateManager_CountWithPrefix(t *testing.T) {
+	sm := &StateManager{
+		records: make(map[string]PresenceRecord),
+	}
+	sm.records["2026-09-11_a"] = PresenceRecord{Key: "2026-09-11_a"}
+	sm.records["2026-09-11_b"] = PresenceRecord{Key: "2026-09-11_b"}
+	sm.records["2026-09-10_c"] = PresenceRecord{Key: "2026-09-10_c"}
+
+	if cnt := sm.CountWithPrefix("2026-09-11_"); cnt != 2 {
+		t.Fatalf("expected 2, got %d", cnt)
+	}
+	if cnt := sm.CountWithPrefix("2026-09-12_"); cnt != 0 {
+		t.Fatalf("expected 0, got %d", cnt)
+	}
+}
+
+func BenchmarkStateManager_KeysWithPrefix(b *testing.B) {
+	sm := &StateManager{
+		records: make(map[string]PresenceRecord),
+	}
+	for i := 0; i < 100; i++ {
+		k := "2026-09-11_" + string(rune('A'+i))
+		sm.records[k] = PresenceRecord{Key: k}
+	}
+	for i := 0; i < 50; i++ {
+		k := "2026-09-10_" + string(rune('A'+i))
+		sm.records[k] = PresenceRecord{Key: k}
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		_ = sm.KeysWithPrefix("2026-09-11_")
+	}
+}
+
+func BenchmarkStateManager_CountWithPrefix(b *testing.B) {
+	sm := &StateManager{
+		records: make(map[string]PresenceRecord),
+	}
+	for i := 0; i < 100; i++ {
+		k := "2026-09-11_" + string(rune('A'+i))
+		sm.records[k] = PresenceRecord{Key: k}
+	}
+	for i := 0; i < 50; i++ {
+		k := "2026-09-10_" + string(rune('A'+i))
+		sm.records[k] = PresenceRecord{Key: k}
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		_ = sm.CountWithPrefix("2026-09-11_")
+	}
+}
+

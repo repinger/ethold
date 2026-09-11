@@ -98,6 +98,19 @@ func (sm *StateManager) Count() int {
 	return len(sm.records)
 }
 
+func (sm *StateManager) CountWithPrefix(prefix string) int {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	count := 0
+	for k := range sm.records {
+		if strings.HasPrefix(k, prefix) {
+			count++
+		}
+	}
+	return count
+}
+
 func (sm *StateManager) KeysWithPrefix(prefix string) []string {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
