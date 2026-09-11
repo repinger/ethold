@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/net/html"
 )
@@ -24,12 +25,14 @@ type UserInfo struct {
 }
 
 type AuthManager struct {
-	mu       sync.Mutex
-	client   *http.Client
-	baseURL  string
-	username string
-	password string
-	user     *UserInfo
+	mu        sync.Mutex
+	refreshMu sync.Mutex
+	client    *http.Client
+	baseURL   string
+	username  string
+	password  string
+	user      *UserInfo
+	lastLogin time.Time
 }
 
 func NewAuthManager(client *http.Client, baseURL, username, password string) *AuthManager {
@@ -51,9 +54,12 @@ func (a *AuthManager) User() *UserInfo {
 }
 
 func (a *AuthManager) Login(ctx context.Context) (*UserInfo, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+	return a.loginLocked(ctx)
+}
 
+func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	slog.Info("Starting CAS SSO authentication")
 
 	// 1. GET cas-redirect
@@ -122,7 +128,11 @@ func (a *AuthManager) Login(ctx context.Context) (*UserInfo, error) {
 		return nil, fmt.Errorf("decode user info: %w", err)
 	}
 
+	a.mu.Lock()
 	a.user = &user
+	a.lastLogin = time.Now()
+	a.mu.Unlock()
+
 	slog.Info("Authentication successful", "name", user.Nama, "nrp", user.NipNrp, "nomor", user.Nomor)
 	return &user, nil
 }
@@ -135,23 +145,36 @@ func (a *AuthManager) Relogin(ctx context.Context) (*UserInfo, error) {
 		return nil, fmt.Errorf("reset cookie jar: %w", err)
 	}
 
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+
 	a.mu.Lock()
 	if a.client != nil {
 		a.client.Jar = jar
 	}
 	a.user = nil
+	a.lastLogin = time.Time{}
 	a.mu.Unlock()
 
-	return a.Login(ctx)
+	return a.loginLocked(ctx)
 }
 
 func (a *AuthManager) EnsureSession(ctx context.Context) error {
+	start := time.Now()
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+
 	a.mu.Lock()
 	hasUser := a.user != nil
+	last := a.lastLogin
 	a.mu.Unlock()
 
+	if hasUser && last.After(start) {
+		return nil
+	}
+
 	if !hasUser {
-		_, err := a.Login(ctx)
+		_, err := a.loginLocked(ctx)
 		return err
 	}
 
@@ -163,13 +186,16 @@ func (a *AuthManager) EnsureSession(ctx context.Context) error {
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
+				a.mu.Lock()
+				a.lastLogin = time.Now()
+				a.mu.Unlock()
 				return nil
 			}
 		}
 	}
 
 	// Token refresh failed or returned non-200, perform full login
-	_, err = a.Login(ctx)
+	_, err = a.loginLocked(ctx)
 	return err
 }
 
