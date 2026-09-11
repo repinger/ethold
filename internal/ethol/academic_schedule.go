@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -105,12 +105,12 @@ func (am *AcademicManager) GetSchedule(ctx context.Context, tahun, semester int)
 		return nil, fmt.Errorf("decode schedule: %w", err)
 	}
 
-	sort.SliceStable(items, func(i, j int) bool {
-		di, dj := items[i].DayValue(), items[j].DayValue()
-		if di != dj {
-			return di < dj
+	slices.SortStableFunc(items, func(a, b ScheduleItem) int {
+		da, db := a.DayValue(), b.DayValue()
+		if da != db {
+			return da - db
 		}
-		return items[i].JamAwal < items[j].JamAwal
+		return strings.Compare(a.JamAwal, b.JamAwal)
 	})
 
 	am.mu.Lock()

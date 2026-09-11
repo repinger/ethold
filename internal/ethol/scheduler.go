@@ -2,7 +2,7 @@ package ethol
 
 import (
 	"math/rand/v2"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -75,8 +75,8 @@ func ComputeScanWindows(items []ScheduleItem, courses []Course, day time.Time) [
 		return nil
 	}
 
-	sort.SliceStable(raw, func(i, j int) bool {
-		return raw[i].Start.Before(raw[j].Start)
+	slices.SortStableFunc(raw, func(a, b ScanWindow) int {
+		return a.Start.Compare(b.Start)
 	})
 
 	merged := []ScanWindow{raw[0]}

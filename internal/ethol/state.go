@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -108,7 +108,7 @@ func (sm *StateManager) KeysWithPrefix(prefix string) []string {
 			matched = append(matched, k)
 		}
 	}
-	sort.Strings(matched)
+	slices.Sort(matched)
 	return matched
 }
 
@@ -123,8 +123,8 @@ func (sm *StateManager) RecordsWithPrefix(prefix string) []PresenceRecord {
 			matched = append(matched, rec)
 		}
 	}
-	sort.Slice(matched, func(i, j int) bool {
-		return matched[i].Key < matched[j].Key
+	slices.SortFunc(matched, func(a, b PresenceRecord) int {
+		return strings.Compare(a.Key, b.Key)
 	})
 	return matched
 }
@@ -164,7 +164,7 @@ func (sm *StateManager) saveLocked() error {
 			recs[k] = rec
 		}
 	}
-	sort.Strings(keyList)
+	slices.Sort(keyList)
 
 	sf := stateFile{
 		AttendedKeys: keyList,
