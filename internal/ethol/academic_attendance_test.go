@@ -1,0 +1,212 @@
+package ethol
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestAcademicManager_Attendance(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/presensi/riwayat":
+			w.Write([]byte(`[{"tanggal":"09-09-2024"}]`))
+		case "/api/presensi/get-tanggal-presensi-dosen-per-semester":
+			w.Write([]byte(`[{"waktu_indonesia":"09-09-2024"},{"waktu_indonesia":"02-09-2024"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+	courses := []Course{
+		{Nomor: 501, JenisSchema: 0, Matakuliah: "Basis Data", Dosen: "Ir. Dosen"},
+	}
+
+	// 1. Test Attendance Stats (1 student presence out of 2 lecturer meetings = 50.0%)
+	now := time.Date(2024, 9, 9, 10, 0, 0, 0, WIBLocation)
+	stats, err := am.GetAttendanceStats(ctx, 2024, 1, 1001, courses)
+	if err != nil {
+		t.Fatalf("GetAttendanceStats error: %v", err)
+	}
+	if stats.Percentage != 50.0 {
+		t.Errorf("expected 50.0%% attendance, got %f", stats.Percentage)
+	}
+
+	// 2. Test FormatAttendanceStatsText
+	statsText, err := am.FormatAttendanceStatsText(ctx, now, 2024, 1, 1001, courses)
+	if err != nil {
+		t.Fatalf("FormatAttendanceStatsText error: %v", err)
+	}
+	if !strings.Contains(statsText, "50.0%") || !strings.Contains(statsText, "Basis Data") {
+		t.Errorf("unexpected stats text: %s", statsText)
+	}
+
+	// 3. Test empty courses edge case
+	emptyStatsText, err := am.FormatAttendanceStatsText(ctx, now, 2024, 1, 1001, nil)
+	if err != nil {
+		t.Fatalf("FormatAttendanceStatsText empty error: %v", err)
+	}
+	if !strings.Contains(emptyStatsText, "Tidak ada mata kuliah yang terdaftar") {
+		t.Errorf("expected empty stats message, got %s", emptyStatsText)
+	}
+}
+
+func TestAcademicManager_Attendance_Caching(t *testing.T) {
+	var riwayatCalls, dosenCalls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/presensi/riwayat":
+			atomic.AddInt32(&riwayatCalls, 1)
+			w.Write([]byte(`[{"tanggal":"09-09-2024"}]`))
+		case "/api/presensi/get-tanggal-presensi-dosen-per-semester":
+			atomic.AddInt32(&dosenCalls, 1)
+			w.Write([]byte(`[{"waktu_indonesia":"09-09-2024"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+	courses := []Course{
+		{Nomor: 501, JenisSchema: 0, Matakuliah: "Basis Data", Dosen: "Ir. Dosen"},
+	}
+
+	stats1, err := am.GetAttendanceStats(ctx, 2024, 1, 1001, courses)
+	if err != nil {
+		t.Fatalf("first GetAttendanceStats error: %v", err)
+	}
+	if stats1 == nil || len(stats1.Breakdown) != 1 {
+		t.Fatalf("unexpected stats1: %+v", stats1)
+	}
+	if calls := atomic.LoadInt32(&riwayatCalls); calls != 1 {
+		t.Fatalf("expected 1 riwayat call, got %d", calls)
+	}
+	if calls := atomic.LoadInt32(&dosenCalls); calls != 1 {
+		t.Fatalf("expected 1 dosen call, got %d", calls)
+	}
+
+	stats2, err := am.GetAttendanceStats(ctx, 2024, 1, 1001, courses)
+	if err != nil {
+		t.Fatalf("second GetAttendanceStats error: %v", err)
+	}
+	if stats2 == nil || len(stats2.Breakdown) != 1 {
+		t.Fatalf("unexpected stats2: %+v", stats2)
+	}
+	if calls := atomic.LoadInt32(&riwayatCalls); calls != 1 {
+		t.Errorf("expected still 1 riwayat call due to caching, got %d", calls)
+	}
+	if calls := atomic.LoadInt32(&dosenCalls); calls != 1 {
+		t.Errorf("expected still 1 dosen call due to caching, got %d", calls)
+	}
+
+	am.InvalidateAttendanceCache()
+	_, _ = am.GetAttendanceStats(ctx, 2024, 1, 1001, courses)
+	if calls := atomic.LoadInt32(&riwayatCalls); calls != 2 {
+		t.Errorf("expected 2 riwayat calls after invalidation, got %d", calls)
+	}
+	if calls := atomic.LoadInt32(&dosenCalls); calls != 2 {
+		t.Errorf("expected 2 dosen calls after invalidation, got %d", calls)
+	}
+}
+
+func TestAcademicManager_AttendanceRoster(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/presensi/daftar-mahasiswa-hadir-kuliah":
+			w.Write([]byte(`[
+				{"nrp": "3122500001", "nama": "Ahmad Fauzi"},
+				{"nrp": "3122500002", "nama": "Budi Santoso"}
+			]`))
+		case "/api/presensi/jumlah-mahasiswa-per-kuliah":
+			w.Write([]byte(`{"jumlah": 30}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+	course := Course{Nomor: 501, JenisSchema: 0, Matakuliah: "Algoritma Pemrograman"}
+
+	attendees, total, err := am.GetAttendanceRoster(ctx, course, "TESTKEY123")
+	if err != nil {
+		t.Fatalf("GetAttendanceRoster error: %v", err)
+	}
+	if len(attendees) != 2 {
+		t.Fatalf("expected 2 attendees, got %d", len(attendees))
+	}
+	if attendees[0].NRP != "3122500001" || attendees[0].Nama != "Ahmad Fauzi" {
+		t.Errorf("unexpected attendee 0: %+v", attendees[0])
+	}
+	if total != 30 {
+		t.Errorf("expected 30 total enrolled, got %d", total)
+	}
+
+	// Format roster text with attendees
+	txt := FormatRosterText(course, "TESTKEY123", attendees, total)
+	if !strings.Contains(txt, "Algoritma Pemrograman") || !strings.Contains(txt, "2 / 30 Mahasiswa Hadir") || !strings.Contains(txt, "Ahmad Fauzi") {
+		t.Errorf("unexpected formatted roster text: %s", txt)
+	}
+
+	// Format roster text without attendees
+	emptyTxt := FormatRosterText(course, "EMPTYKEY", nil, total)
+	if !strings.Contains(emptyTxt, "Belum ada mahasiswa yang tercatat hadir") {
+		t.Errorf("unexpected empty roster text: %s", emptyTxt)
+	}
+
+	// Format roster text with >100 attendees
+	largeAttendees := make([]RosterItem, 120)
+	for i := range largeAttendees {
+		largeAttendees[i] = RosterItem{NRP: fmt.Sprintf("NRP%d", i+1), Nama: fmt.Sprintf("Mhs %d", i+1)}
+	}
+	largeTxt := FormatRosterText(course, "LARGEKEY", largeAttendees, 120)
+	if !strings.Contains(largeTxt, "100. NRP100 - <b>Mhs 100</b>") {
+		t.Errorf("expected 100th attendee in roster text, got: %s", largeTxt)
+	}
+	if strings.Contains(largeTxt, "101. NRP101") {
+		t.Errorf("expected attendee 101 to be truncated")
+	}
+	if !strings.Contains(largeTxt, "... dan 20 mahasiswa lainnya") {
+		t.Errorf("expected truncation summary in roster text, got: %s", largeTxt)
+	}
+
+	// Test 401 Unauthorized
+	unauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	}))
+	defer unauthServer.Close()
+
+	unauthAM := NewAcademicManager(client, unauthServer.URL, 5*time.Minute)
+	if _, _, err := unauthAM.GetAttendanceRoster(ctx, course, "KEY"); err != ErrUnauthorized {
+		t.Errorf("expected ErrUnauthorized for roster, got %v", err)
+	}
+}

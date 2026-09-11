@@ -1,0 +1,200 @@
+package ethol
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+)
+
+type NotificationItem struct {
+	IDNotifikasi   int    `json:"idNotifikasi"`
+	KodeNotifikasi string `json:"kodeNotifikasi"`
+	Keterangan     string `json:"keterangan"`
+	Status         any    `json:"status"`
+}
+
+func (n *NotificationItem) UnmarshalJSON(data []byte) error {
+	// ponytail: coercing int|string|float ID via parseCount; upgrade if API introduces non-numeric IDs.
+	type Alias NotificationItem
+	aux := &struct {
+		IDNotifikasi any `json:"idNotifikasi"`
+		*Alias
+	}{
+		Alias: (*Alias)(n),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	n.IDNotifikasi = parseCount(aux.IDNotifikasi)
+	return nil
+}
+
+func (am *AcademicManager) PollNotifications(
+	ctx context.Context,
+	onPresenceNotif func(keterangan string),
+	onTaskNotif func(keterangan string),
+) error {
+	checkURL := fmt.Sprintf("%s/api/notifikasi/mahasiswa-belum-baca", am.baseURL)
+	reqCheck, err := http.NewRequestWithContext(ctx, http.MethodGet, checkURL, nil)
+	if err != nil {
+		return fmt.Errorf("create check unread req: %w", err)
+	}
+
+	respCheck, err := am.client.Do(reqCheck)
+	if err != nil {
+		return fmt.Errorf("fetch unread count: %w", err)
+	}
+	defer respCheck.Body.Close()
+
+	if respCheck.StatusCode == http.StatusUnauthorized {
+		return ErrUnauthorized
+	}
+	if respCheck.StatusCode != http.StatusOK {
+		return fmt.Errorf("check unread count failed: HTTP %d", respCheck.StatusCode)
+	}
+
+	var countData struct {
+		Jumlah any `json:"jumlah"`
+	}
+	if err := json.NewDecoder(respCheck.Body).Decode(&countData); err != nil {
+		return fmt.Errorf("decode unread count: %w", err)
+	}
+
+	if parseCount(countData.Jumlah) <= 0 {
+		return nil
+	}
+
+	notifURL := fmt.Sprintf("%s/api/notifikasi/mahasiswa?filterNotif=SEMUA", am.baseURL)
+	reqNotif, err := http.NewRequestWithContext(ctx, http.MethodGet, notifURL, nil)
+	if err != nil {
+		return fmt.Errorf("create fetch notifications req: %w", err)
+	}
+
+	respNotif, err := am.client.Do(reqNotif)
+	if err != nil {
+		return fmt.Errorf("fetch notifications: %w", err)
+	}
+	defer respNotif.Body.Close()
+
+	if respNotif.StatusCode == http.StatusUnauthorized {
+		return ErrUnauthorized
+	}
+	if respNotif.StatusCode != http.StatusOK {
+		return fmt.Errorf("fetch notifications failed: HTTP %d", respNotif.StatusCode)
+	}
+
+	var items []NotificationItem
+	if err := json.NewDecoder(respNotif.Body).Decode(&items); err != nil {
+		return fmt.Errorf("decode notifications: %w", err)
+	}
+
+	for _, item := range items {
+		if item.IDNotifikasi <= 0 {
+			continue
+		}
+
+		am.mu.Lock()
+		if am.processedNotifIDs == nil {
+			am.processedNotifIDs = make(map[int]struct{})
+		}
+		if _, exists := am.processedNotifIDs[item.IDNotifikasi]; exists {
+			am.mu.Unlock()
+			continue
+		}
+		if len(am.processedNotifQueue) >= maxNotifHistory {
+			oldest := am.processedNotifQueue[0]
+			delete(am.processedNotifIDs, oldest)
+			copy(am.processedNotifQueue, am.processedNotifQueue[1:])
+			am.processedNotifQueue[len(am.processedNotifQueue)-1] = item.IDNotifikasi
+		} else {
+			am.processedNotifQueue = append(am.processedNotifQueue, item.IDNotifikasi)
+		}
+		am.processedNotifIDs[item.IDNotifikasi] = struct{}{}
+		am.mu.Unlock()
+
+		_ = am.markNotificationRead(ctx, item.IDNotifikasi)
+
+		kode := strings.ToUpper(strings.TrimSpace(item.KodeNotifikasi))
+		switch {
+		case strings.Contains(kode, "PRESENSI"):
+			if onPresenceNotif != nil {
+				onPresenceNotif(item.Keterangan)
+			}
+		case strings.Contains(kode, "TUGAS"):
+			if onTaskNotif != nil {
+				onTaskNotif(item.Keterangan)
+			}
+		default:
+			slog.Debug("Unhandled notification code", "kode", item.KodeNotifikasi, "keterangan", item.Keterangan)
+		}
+	}
+
+	return nil
+}
+
+func (am *AcademicManager) markNotificationRead(ctx context.Context, id int) error {
+	readURL := fmt.Sprintf("%s/api/notifikasi/mahasiswa-baca-notif", am.baseURL)
+	body := strings.NewReader(fmt.Sprintf(`{"idNotifikasi":%d}`, id))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, readURL, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := am.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
+func (am *AcademicManager) StartNotificationPoller(
+	ctx context.Context,
+	interval time.Duration,
+	ensureAuth func(ctx context.Context) error,
+	onPresenceNotif func(keterangan string),
+	onTaskNotif func(keterangan string),
+) {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	poll := func() {
+		err := am.PollNotifications(ctx, onPresenceNotif, onTaskNotif)
+		if errors.Is(err, ErrUnauthorized) && ensureAuth != nil {
+			if reErr := ensureAuth(ctx); reErr == nil {
+				err = am.PollNotifications(ctx, onPresenceNotif, onTaskNotif)
+			} else {
+				err = reErr
+			}
+		}
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("Notification poller cycle failed", "error", err)
+		}
+	}
+
+	poll()
+
+	for {
+		timer := time.NewTimer(calculatePollerInterval(interval))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+			poll()
+		}
+	}
+}
+
+func calculatePollerInterval(base time.Duration) time.Duration {
+	return calculateJitter(base, 0.20)
+}
