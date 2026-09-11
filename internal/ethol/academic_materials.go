@@ -91,6 +91,7 @@ func (am *AcademicManager) GetCourseMaterials(ctx context.Context, courses []Cou
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	sem := make(chan struct{}, maxAcademicConcurrency)
 	for i, c := range courses {
 		am.mu.RLock()
 		entry, cached := am.materialCache[c.Nomor]
@@ -101,9 +102,18 @@ func (am *AcademicManager) GetCourseMaterials(ctx context.Context, courses []Cou
 			continue
 		}
 
+		select {
+		case <-ctx.Done():
+			break
+		case sem <- struct{}{}:
+		}
+
 		wg.Add(1)
 		go func(idx int, crs Course) {
-			defer wg.Done()
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
 			items, err := am.fetchMaterials(ctx, crs)
 			if err != nil {
 				errOnce.Do(func() {
@@ -180,6 +190,7 @@ func (am *AcademicManager) GetCourseVideos(ctx context.Context, courses []Course
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	sem := make(chan struct{}, maxAcademicConcurrency)
 	for i, c := range courses {
 		am.mu.RLock()
 		entry, cached := am.videoCache[c.Nomor]
@@ -190,9 +201,18 @@ func (am *AcademicManager) GetCourseVideos(ctx context.Context, courses []Course
 			continue
 		}
 
+		select {
+		case <-ctx.Done():
+			break
+		case sem <- struct{}{}:
+		}
+
 		wg.Add(1)
 		go func(idx int, crs Course) {
-			defer wg.Done()
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
 			items, err := am.fetchVideos(ctx, crs)
 			if err != nil {
 				errOnce.Do(func() {

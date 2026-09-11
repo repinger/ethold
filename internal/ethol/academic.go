@@ -47,7 +47,10 @@ type AcademicManager struct {
 	processedNotifQueue []int
 }
 
-const maxNotifHistory = 1000
+const (
+	maxNotifHistory        = 1000
+	maxAcademicConcurrency = 6
+)
 
 func NewAcademicManager(client *http.Client, baseURL string, ttl time.Duration) *AcademicManager {
 	if client == nil {
@@ -72,20 +75,20 @@ func NewAcademicManager(client *http.Client, baseURL string, ttl time.Duration) 
 func (am *AcademicManager) InvalidateTasksCache() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	am.taskCache = make(map[int]taskCacheEntry)
+	clear(am.taskCache)
 }
 
 func (am *AcademicManager) InvalidateMaterialsCache() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	am.materialCache = make(map[int]materialCacheEntry)
-	am.videoCache = make(map[int]videoCacheEntry)
+	clear(am.materialCache)
+	clear(am.videoCache)
 }
 
 func (am *AcademicManager) InvalidateAttendanceCache() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	am.attendanceCache = make(map[string]attendanceCacheEntry)
+	clear(am.attendanceCache)
 }
 
 type AcademicCacheStats struct {

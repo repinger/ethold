@@ -347,10 +347,20 @@ func (am *AcademicManager) getAttendanceStatsAt(ctx context.Context, now time.Ti
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	sem := make(chan struct{}, maxAcademicConcurrency)
 	for i, c := range courses {
+		select {
+		case <-ctx.Done():
+			break
+		case sem <- struct{}{}:
+		}
+
 		wg.Add(1)
 		go func(idx int, crs Course) {
-			defer wg.Done()
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
 			ca, err := am.fetchCourseAttendance(ctx, crs, tahun, semester, studentID, todayStr, todayStrAlt)
 			if err != nil {
 				errOnce.Do(func() {
