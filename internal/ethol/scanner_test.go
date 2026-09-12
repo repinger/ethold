@@ -98,7 +98,7 @@ func TestScannerScanOnce(t *testing.T) {
 	notifier := NewTelegramNotifier(client, server.URL, "test-token", "12345")
 
 	scanner := NewScanner(auth, courses, presence, nil, state, notifier, 2)
-	scanner.SetPresenceDelay(0, 0)
+	scanner.minDelay, scanner.maxDelay = 0, 0
 	ctx := context.Background()
 
 	// 1. First scan: should submit presence
@@ -273,7 +273,7 @@ func TestScanner_HandleTelegramCommand(t *testing.T) {
 	}
 
 	todayStr := TodayDate(NowWIB())
-	_ = state.Add(todayStr + "_presensi-key-99")
+	_ = state.AddRecord(PresenceRecord{Key: todayStr + "_presensi-key-99"})
 	reply = scanner.HandleTelegramCommand(ctx, "/today")
 	if !strings.Contains(reply, "presensi-key-99") {
 		t.Errorf("expected today reply to contain added key, got %q", reply)
@@ -394,7 +394,7 @@ func TestScanner_AcademicCommands(t *testing.T) {
 	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
 
 	scanner := NewScanner(auth, courses, presence, academic, state, notifier, 1)
-	scanner.SetPresenceDelay(0, 0)
+	scanner.minDelay, scanner.maxDelay = 0, 0
 	ctx := context.Background()
 
 	// 1. /jadwal
@@ -635,7 +635,8 @@ func TestScanner_PresenceDelay(t *testing.T) {
 	}
 
 	// 1. Verify delay executes within [min, max] range
-	scanner.SetPresenceDelay(50*time.Millisecond, 80*time.Millisecond)
+	scanner.minDelay = 50 * time.Millisecond
+	scanner.maxDelay = 80 * time.Millisecond
 	start := time.Now()
 	attended, err := scanner.ScanOnce(context.Background())
 	duration := time.Since(start)
@@ -659,7 +660,8 @@ func TestScanner_PresenceDelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	scanner2 := NewScanner(auth, courses, presence, nil, state2, notifier, 1)
-	scanner2.SetPresenceDelay(500*time.Millisecond, 1*time.Second)
+	scanner2.minDelay = 500 * time.Millisecond
+	scanner2.maxDelay = 1 * time.Second
 
 	ctxCancel, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -767,7 +769,7 @@ func TestScanner_MaterialsAndRosterCommands(t *testing.T) {
 	notifier := NewTelegramNotifier(client, server.URL, "test-token", "12345")
 
 	scanner := NewScanner(auth, courses, presence, academic, state, notifier, 1)
-	scanner.SetPresenceDelay(0, 0)
+	scanner.minDelay, scanner.maxDelay = 0, 0
 	ctx := context.Background()
 
 	// 1. Test /help contains /materi and /presensi_kelas
@@ -899,13 +901,8 @@ func TestScannerWorkerStagger(t *testing.T) {
 		t.Errorf("expected default stagger [50ms, 250ms], got [%v, %v]", minS, maxS)
 	}
 
-	scanner.SetWorkerStagger(-1, -10)
-	minS, maxS = scanner.WorkerStagger()
-	if minS != 0 || maxS != 0 {
-		t.Errorf("expected [0, 0] after negative stagger, got [%v, %v]", minS, maxS)
-	}
-
-	scanner.SetWorkerStagger(10*time.Millisecond, 50*time.Millisecond)
+	scanner.minStagger = 10 * time.Millisecond
+	scanner.maxStagger = 50 * time.Millisecond
 	distinct := make(map[time.Duration]bool)
 	for i := 0; i < 50; i++ {
 		d := scanner.calculateWorkerStagger()

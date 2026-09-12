@@ -159,19 +159,6 @@ func (s *Scanner) PresenceDelay() (time.Duration, time.Duration) {
 	return s.minDelay, s.maxDelay
 }
 
-func (s *Scanner) SetPresenceDelay(min, max time.Duration) {
-	s.delayMu.Lock()
-	defer s.delayMu.Unlock()
-	if min < 0 {
-		min = 0
-	}
-	if max < min {
-		max = min
-	}
-	s.minDelay = min
-	s.maxDelay = max
-}
-
 func (s *Scanner) calculateDelay() time.Duration {
 	s.delayMu.RLock()
 	minD, maxD := s.minDelay, s.maxDelay
@@ -192,19 +179,6 @@ func (s *Scanner) WorkerStagger() (time.Duration, time.Duration) {
 	s.staggerMu.RLock()
 	defer s.staggerMu.RUnlock()
 	return s.minStagger, s.maxStagger
-}
-
-func (s *Scanner) SetWorkerStagger(min, max time.Duration) {
-	s.staggerMu.Lock()
-	defer s.staggerMu.Unlock()
-	if min < 0 {
-		min = 0
-	}
-	if max < min {
-		max = min
-	}
-	s.minStagger = min
-	s.maxStagger = max
 }
 
 func (s *Scanner) calculateWorkerStagger() time.Duration {
