@@ -2,7 +2,7 @@
 
 ## Project
 
-Go 1.27 daemon that auto-submits attendance on ETHOL PENS via CAS SSO. Single binary, single `internal/ethol` package, one external dep (`golang.org/x/net` for HTML tokenizer).
+Go 1.27.1 daemon that auto-submits attendance on ETHOL PENS via CAS SSO. Single binary, single `internal/ethol` package, one external dep (`golang.org/x/net` for HTML tokenizer). Auto-presence is opt-in (`ETHOL_AUTO_PRESENCE=true`); without it the daemon runs in academic-only mode (Telegram commands, notifications, no scanning).
 
 ## Commands
 
@@ -35,6 +35,7 @@ internal/ethol/                  # all domain code (flat, single package)
   academic_materials.go  # materials and videos fetch, formatting
   academic_attendance.go # class roster, attendance stats, riwayat
   academic_notif.go      # notification polling and mark-read
+  debug.go               # /debug Telegram command, runtime diagnostics
 
   state.go       # atomic JSON persistence (attended_keys.json)
   telegram.go    # Telegram Bot API (sendMessage, long-poll getUpdates)
