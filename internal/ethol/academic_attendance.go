@@ -133,9 +133,9 @@ func FormatRosterText(c Course, key string, attendees []RosterItem, totalEnrolle
 		totalStr = fmt.Sprintf(" / %d", totalEnrolled)
 	}
 	sb.WriteString("👥 <b>DAFTAR PRESENSI KELAS</b>\n\n")
-	sb.WriteString(fmt.Sprintf("📚 <b>Mata Kuliah:</b> %s\n", html.EscapeString(c.CourseName())))
-	sb.WriteString(fmt.Sprintf("🔑 <b>Key:</b> <code>%s</code>\n", html.EscapeString(key)))
-	sb.WriteString(fmt.Sprintf("📊 <b>Kehadiran:</b> %d%s Mahasiswa Hadir\n\n", len(attendees), totalStr))
+	fmt.Fprintf(&sb, "📚 <b>Mata Kuliah:</b> %s\n", html.EscapeString(c.CourseName()))
+	fmt.Fprintf(&sb, "🔑 <b>Key:</b> <code>%s</code>\n", html.EscapeString(key))
+	fmt.Fprintf(&sb, "📊 <b>Kehadiran:</b> %d%s Mahasiswa Hadir\n\n", len(attendees), totalStr)
 
 	if len(attendees) == 0 {
 		sb.WriteString("Belum ada mahasiswa yang tercatat hadir.")
@@ -152,15 +152,15 @@ func FormatRosterText(c Course, key string, attendees []RosterItem, totalEnrolle
 		nrp := html.EscapeString(a.NRP)
 		nama := html.EscapeString(a.Nama)
 		if nrp != "" && nama != "" {
-			sb.WriteString(fmt.Sprintf("%d. %s - <b>%s</b>\n", i+1, nrp, nama))
+			fmt.Fprintf(&sb, "%d. %s - <b>%s</b>\n", i+1, nrp, nama)
 		} else if nrp != "" {
-			sb.WriteString(fmt.Sprintf("%d. <code>%s</code>\n", i+1, nrp))
+			fmt.Fprintf(&sb, "%d. <code>%s</code>\n", i+1, nrp)
 		} else {
-			sb.WriteString(fmt.Sprintf("%d. <b>%s</b>\n", i+1, nama))
+			fmt.Fprintf(&sb, "%d. <b>%s</b>\n", i+1, nama)
 		}
 	}
 	if len(attendees) > 100 {
-		sb.WriteString(fmt.Sprintf("\n<i>... dan %d mahasiswa lainnya</i>", len(attendees)-100))
+		fmt.Fprintf(&sb, "\n<i>... dan %d mahasiswa lainnya</i>", len(attendees)-100)
 	}
 
 	return strings.TrimSpace(sb.String())

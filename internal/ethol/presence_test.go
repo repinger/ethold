@@ -42,13 +42,14 @@ func TestCourseAndPresenceEngine(t *testing.T) {
 
 		case "/api/presensi/aktif-kuliah":
 			kuliah := r.URL.Query().Get("kuliah")
-			if kuliah == "101" {
+			switch kuliah {
+			case "101":
 				// Array format
 				json.NewEncoder(w).Encode([]map[string]any{{"key": "session-101"}})
-			} else if kuliah == "102" {
+			case "102":
 				// Single object format
 				json.NewEncoder(w).Encode(map[string]any{"key": "session-102"})
-			} else {
+			default:
 				json.NewEncoder(w).Encode(map[string]any{"key": nil})
 			}
 
