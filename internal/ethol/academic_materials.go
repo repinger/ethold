@@ -29,23 +29,7 @@ func (m MaterialItem) ItemTitle() string {
 	return m.Judul
 }
 
-type VideoItem struct {
-	ID               int    `json:"id"`
-	Title            string `json:"title"`
-	Judul            string `json:"judul"`
-	Path             string `json:"path"`
-	Tipe             int    `json:"tipe"`
-	CreatedIndonesia string `json:"created_indonesia"`
-	KuliahID         int    `json:"kuliah_id"`
-	CourseName       string `json:"matkul"`
-}
-
-func (v VideoItem) ItemTitle() string {
-	if v.Title != "" {
-		return v.Title
-	}
-	return v.Judul
-}
+type VideoItem = MaterialItem
 
 func (am *AcademicManager) fetchMaterials(ctx context.Context, c Course) ([]MaterialItem, error) {
 	materiURL := fmt.Sprintf("%s/api/materi?matakuliah=%d&jenis_schema=%d", am.baseURL, c.Nomor, c.JenisSchema)
