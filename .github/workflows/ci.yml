@@ -37,9 +37,6 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
-      - name: Run vet
-        run: go vet ./...
-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
