@@ -30,8 +30,6 @@ func TestNewAcademicManager(t *testing.T) {
 		t.Errorf("expected initialized notification tracking collections")
 	}
 
-	am.InvalidateTasksCache()
-	am.InvalidateMaterialsCache()
 	am.InvalidateAttendanceCache()
 }
 

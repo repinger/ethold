@@ -148,10 +148,4 @@ func TestAcademicManager_Tasks_Caching(t *testing.T) {
 	if calls := atomic.LoadInt32(&taskCalls); calls != 1 {
 		t.Errorf("expected still 1 task call due to caching, got %d", calls)
 	}
-
-	am.InvalidateTasksCache()
-	_, _ = am.GetPendingTasks(ctx, courses)
-	if calls := atomic.LoadInt32(&taskCalls); calls != 2 {
-		t.Errorf("expected 2 task calls after invalidation, got %d", calls)
-	}
 }

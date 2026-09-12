@@ -94,13 +94,6 @@ func TestAcademicManager_MaterialsAndVideos(t *testing.T) {
 		t.Errorf("expected 1 video call due to caching, got %d", calls)
 	}
 
-	// Invalidate and verify refetch
-	am.InvalidateMaterialsCache()
-	_, _ = am.GetCourseMaterials(ctx, courses)
-	if calls := atomic.LoadInt32(&materiCalls); calls != 2 {
-		t.Errorf("expected 2 materi calls after invalidation, got %d", calls)
-	}
-
 	// 4. Test FormatMaterialsText
 	txt, err := am.FormatMaterialsText(ctx, courses)
 	if err != nil {

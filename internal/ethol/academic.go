@@ -72,19 +72,6 @@ func NewAcademicManager(client *http.Client, baseURL string, ttl time.Duration) 
 	}
 }
 
-func (am *AcademicManager) InvalidateTasksCache() {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	clear(am.taskCache)
-}
-
-func (am *AcademicManager) InvalidateMaterialsCache() {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	clear(am.materialCache)
-	clear(am.videoCache)
-}
-
 func (am *AcademicManager) InvalidateAttendanceCache() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
