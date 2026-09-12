@@ -1057,3 +1057,77 @@ func TestScannerAutoPresenceDisabled(t *testing.T) {
 	}
 }
 
+func TestScannerComputeScanPlanUnauthorizedRetry(t *testing.T) {
+	var (
+		authAttempts atomic.Int32
+		configCalls atomic.Int32
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login" method="post"><input name="username"/><input name="password"/></form>`)
+				return
+			}
+			authAttempts.Add(1)
+			http.SetCookie(w, &http.Cookie{Name: "ETHOL_SESS", Value: "session-ok", Path: "/"})
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Write([]byte(`{"nomor":1001,"nama":"Budi","nipnrp":"3120600001"}`))
+		case "/api/auth/config":
+			calls := configCalls.Add(1)
+			if calls == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"tahun_aktif": 2024, "semester_aktif": 1})
+		case "/api/kuliah":
+			json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"nomor":       501,
+					"jenisSchema": 0,
+					"dosen":       "Dr. Tech",
+					"matakuliah":  map[string]any{"nama": "Algoritma"},
+				},
+			})
+		case "/api/jadwal/jadwal-online":
+			json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	courses := NewCourseManager(client, server.URL, 10*time.Minute)
+	academic := NewAcademicManager(client, server.URL, 10*time.Minute)
+	state, err := NewStateManager(filepath.Join(t.TempDir(), "keys.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	presence := NewPresenceEngine(client, server.URL)
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+
+	scanner := NewScanner(auth, courses, presence, academic, state, notifier, 1)
+	ctx := context.Background()
+
+	plan := scanner.computeScanPlan(ctx, time.Now())
+	if authAttempts.Load() != 1 {
+		t.Errorf("expected 1 auth attempt upon 401 in computeScanPlan, got %d", authAttempts.Load())
+	}
+	if len(plan.Courses) == 0 && configCalls.Load() < 2 {
+		t.Errorf("expected plan to succeed with retried active period, got 0 courses and %d config calls", configCalls.Load())
+	}
+}
+
+

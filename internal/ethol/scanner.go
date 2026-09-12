@@ -808,12 +808,22 @@ func (s *Scanner) computeScanPlan(ctx context.Context, now time.Time) ScanPlan {
 	}
 
 	tahun, semester, err := s.courses.ActivePeriod(ctx)
+	if errors.Is(err, ErrUnauthorized) && s.auth != nil {
+		if reErr := s.auth.EnsureSession(ctx); reErr == nil {
+			tahun, semester, err = s.courses.ActivePeriod(ctx)
+		}
+	}
 	if err != nil {
 		slog.Warn("Failed to get active period for scan plan", "error", err)
 		return NextScanPlan(now, nil)
 	}
 
 	items, err := s.academic.GetSchedule(ctx, tahun, semester)
+	if errors.Is(err, ErrUnauthorized) && s.auth != nil {
+		if reErr := s.auth.EnsureSession(ctx); reErr == nil {
+			items, err = s.academic.GetSchedule(ctx, tahun, semester)
+		}
+	}
 	if err != nil {
 		slog.Warn("Failed to get schedule for scan plan, falling back to active interval", "error", err)
 		return ScanPlan{
@@ -824,6 +834,11 @@ func (s *Scanner) computeScanPlan(ctx context.Context, now time.Time) ScanPlan {
 	}
 
 	courses, err := s.courses.GetCourses(ctx)
+	if errors.Is(err, ErrUnauthorized) && s.auth != nil {
+		if reErr := s.auth.EnsureSession(ctx); reErr == nil {
+			courses, err = s.courses.GetCourses(ctx)
+		}
+	}
 	if err != nil {
 		slog.Warn("Failed to get courses for scan plan", "error", err)
 		return NextScanPlan(now, nil)
