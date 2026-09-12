@@ -12,7 +12,7 @@ func TestLoadEnvConfig(t *testing.T) {
 
 	content := `
 # Comment line
-ETHOL_USERNAME=user@student.pens.ac.id
+ETHOL_EMAIL=user@student.pens.ac.id
 ETHOL_PASSWORD="secret_password"
 TELEGRAM_TOKEN='123456:ABC-DEF'
 export TELEGRAM_CHAT_ID=987654321
@@ -55,7 +55,7 @@ func TestLoadEnvConfigValidation(t *testing.T) {
 }
 
 func TestLoadConfigFromEnv(t *testing.T) {
-	t.Setenv("ETHOL_USERNAME", "env_user@student.pens.ac.id")
+	t.Setenv("ETHOL_EMAIL", "env_user@student.pens.ac.id")
 	t.Setenv("ETHOL_PASSWORD", "env_secret")
 	t.Setenv("TELEGRAM_TOKEN", "env_token")
 	t.Setenv("TELEGRAM_CHAT_ID", "112233")
@@ -84,7 +84,7 @@ func TestLoadConfigPrecedence(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")
 	content := `
-ETHOL_USERNAME=file_user
+ETHOL_EMAIL=file_user
 ETHOL_PASSWORD=file_pass
 TELEGRAM_TOKEN=file_token
 TELEGRAM_CHAT_ID=file_chat
@@ -139,7 +139,7 @@ func TestLoadConfigAutoPresence(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.envVal, func(t *testing.T) {
-			t.Setenv("ETHOL_USERNAME", "dummy_user")
+			t.Setenv("ETHOL_EMAIL", "dummy_user")
 			t.Setenv("ETHOL_PASSWORD", "dummy_pass")
 			t.Setenv("ETHOL_AUTO_PRESENCE", tc.envVal)
 
@@ -157,7 +157,7 @@ func TestLoadConfigAutoPresence(t *testing.T) {
 func BenchmarkParseEnv(b *testing.B) {
 	// ponytail: static 15-line env fixture, add file loader benchmark when env size grows
 	raw := []byte(`# Configuration for ethold
-ETHOL_USERNAME=3120600001
+ETHOL_EMAIL=3120600001
 ETHOL_PASSWORD="secret_password_here"
 ETHOL_BASE_URL='https://ethol.pens.ac.id'
 ETHOL_CAS_URL=https://cas.pens.ac.id/cas

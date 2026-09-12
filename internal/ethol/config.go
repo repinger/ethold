@@ -77,7 +77,7 @@ func LoadConfig(path string, overrides ...Config) (*Config, error) {
 	}
 
 	cfg := &Config{
-		Username:       resolveValue(override.Username, "ETHOL_USERNAME", env),
+		Username:       resolveValue(override.Username, "ETHOL_EMAIL", env),
 		Password:       resolveValue(override.Password, "ETHOL_PASSWORD", env),
 		TelegramToken:  resolveValue(override.TelegramToken, "TELEGRAM_TOKEN", env),
 		TelegramChatID: resolveValue(override.TelegramChatID, "TELEGRAM_CHAT_ID", env),
@@ -85,7 +85,7 @@ func LoadConfig(path string, overrides ...Config) (*Config, error) {
 	}
 
 	if cfg.Username == "" || cfg.Password == "" {
-		return nil, errors.New("ETHOL_USERNAME and ETHOL_PASSWORD are required in config")
+		return nil, errors.New("ETHOL_EMAIL and ETHOL_PASSWORD are required in config")
 	}
 
 	return cfg, nil

@@ -32,7 +32,7 @@ cp .env.example .env
 Edit `.env`:
 
 ```bash
-ETHOL_USERNAME=email@student.pens.ac.id
+ETHOL_EMAIL=email@student.pens.ac.id
 ETHOL_PASSWORD=sso_password
 
 # Optional: Telegram alerts (leave empty to disable)
@@ -43,7 +43,7 @@ TELEGRAM_CHAT_ID=
 ETHOL_AUTO_PRESENCE=
 ```
 
-Credentials can be set via `.env` file, system environment variables (`export ETHOL_USERNAME=...`), or command line flags (`--username`, `--password`).
+Credentials can be set via `.env` file, system environment variables (`export ETHOL_EMAIL=...`), or command line flags (`--username`, `--password`).
 
 Auto-presence is disabled by default. Set `ETHOL_AUTO_PRESENCE=true` to enable automatic attendance scanning and submission. Without this, the daemon functions purely as an academic info bot (schedule, assignments, materials, attendance stats).
 
@@ -134,7 +134,7 @@ Run directly with Docker:
 docker run -d \
   --name ethold \
   --restart unless-stopped \
-  -e ETHOL_USERNAME=foo \
+  -e ETHOL_EMAIL=foo \
   -e ETHOL_PASSWORD=p@ssw0rd \
   -e ETHOL_AUTO_PRESENCE=true \
   -v ethold_state:/app/data \
