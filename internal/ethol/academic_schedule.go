@@ -255,7 +255,7 @@ func (am *AcademicManager) FormatScheduleText(ctx context.Context, now time.Time
 			currentDayVal = dayVal
 			dayName := strings.ToUpper(strings.TrimSpace(item.Hari))
 			if dayName == "" {
-				dayName = dayNameFromValue(dayVal)
+				dayName = "LAINNYA"
 			}
 			dayName = html.EscapeString(dayName)
 			if dayVal == todayVal {
@@ -299,25 +299,4 @@ func parseClockToTime(clockStr string, base time.Time) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return time.Date(base.Year(), base.Month(), base.Day(), hour, min, 0, 0, WIBLocation), nil
-}
-
-func dayNameFromValue(val int) string {
-	switch val {
-	case 1:
-		return "SENIN"
-	case 2:
-		return "SELASA"
-	case 3:
-		return "RABU"
-	case 4:
-		return "KAMIS"
-	case 5:
-		return "JUMAT"
-	case 6:
-		return "SABTU"
-	case 7:
-		return "MINGGU"
-	default:
-		return "LAINNYA"
-	}
 }
