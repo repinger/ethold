@@ -75,6 +75,20 @@ Check code test coverage:
 go test -cover ./...
 ```
 
+## Running Benchmarks
+
+Measure execution duration and heap allocations across critical paths:
+
+Run all benchmarks:
+```bash
+go test -run='^$' -bench=. -benchmem ./internal/ethol
+```
+
+Run a specific benchmark:
+```bash
+go test -run='^$' -bench=BenchmarkParseEnv -benchmem ./internal/ethol
+```
+
 ## Coding Conventions
 
 Adhere to these rules when making changes:

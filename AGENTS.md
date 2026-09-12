@@ -10,6 +10,8 @@ Go 1.27 daemon that auto-submits attendance on ETHOL PENS via CAS SSO. Single bi
 go build -o ethold ./cmd/ethold   # build
 go test -v ./...                                           # all tests (stdlib only, no framework)
 go test -v -run TestFoo ./internal/ethol                   # single test
+go test -run='^$' -bench=. -benchmem ./internal/ethol      # all benchmarks
+go test -run='^$' -bench=BenchmarkFoo -benchmem ./internal/ethol # single benchmark
 go vet ./...                                               # vet
 ```
 
@@ -46,6 +48,10 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
   - Body: describe problem and technical solution in detail, wrapped at 75 columns
   - AI agents MUST NOT add `Signed-off-by` tags (only human contributors certify DCO)
   - AI-assisted commits MUST include: `Assisted-by: <model-name> <tool>` (e.g. `Assisted-by: gemini-3.8-flash-medium Antigravity`)
+- Benchmark baseline & regression gating:
+  - AI agents MUST run relevant benchmarks before modifying code to establish a baseline (`go test -run='^$' -bench=. -benchmem ./internal/ethol`).
+  - After making modifications, re-run benchmarks and compare `ns/op`, `B/op`, and `allocs/op`.
+  - If results show performance regression compared to baseline, the agent MUST revise and optimize the implementation until performance matches or improves upon baseline before completing work.
 - All code in one flat package under `internal/ethol` — no sub-packages
 - Config via `.env` file (custom parser, not third-party); see `.env.example`
 - State persisted as atomic JSON writes to `attended_keys.json`
