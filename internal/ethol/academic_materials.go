@@ -76,6 +76,7 @@ func (am *AcademicManager) GetCourseMaterials(ctx context.Context, courses []Cou
 	defer cancel()
 
 	sem := make(chan struct{}, maxAcademicConcurrency)
+materialLoop:
 	for i, c := range courses {
 		am.mu.RLock()
 		entry, cached := am.materialCache[c.Nomor]
@@ -88,7 +89,7 @@ func (am *AcademicManager) GetCourseMaterials(ctx context.Context, courses []Cou
 
 		select {
 		case <-ctx.Done():
-			break
+			break materialLoop
 		case sem <- struct{}{}:
 		}
 
@@ -175,6 +176,7 @@ func (am *AcademicManager) GetCourseVideos(ctx context.Context, courses []Course
 	defer cancel()
 
 	sem := make(chan struct{}, maxAcademicConcurrency)
+videoLoop:
 	for i, c := range courses {
 		am.mu.RLock()
 		entry, cached := am.videoCache[c.Nomor]
@@ -187,7 +189,7 @@ func (am *AcademicManager) GetCourseVideos(ctx context.Context, courses []Course
 
 		select {
 		case <-ctx.Done():
-			break
+			break videoLoop
 		case sem <- struct{}{}:
 		}
 

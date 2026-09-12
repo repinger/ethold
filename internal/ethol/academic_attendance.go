@@ -342,10 +342,11 @@ func (am *AcademicManager) getAttendanceStatsAt(ctx context.Context, now time.Ti
 	defer cancel()
 
 	sem := make(chan struct{}, maxAcademicConcurrency)
+courseLoop:
 	for i, c := range courses {
 		select {
 		case <-ctx.Done():
-			break
+			break courseLoop
 		case sem <- struct{}{}:
 		}
 

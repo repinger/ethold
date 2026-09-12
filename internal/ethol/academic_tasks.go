@@ -67,6 +67,7 @@ func (am *AcademicManager) GetPendingTasks(ctx context.Context, courses []Course
 	defer cancel()
 
 	sem := make(chan struct{}, maxAcademicConcurrency)
+taskLoop:
 	for i, c := range courses {
 		am.mu.RLock()
 		entry, cached := am.taskCache[c.Nomor]
@@ -79,7 +80,7 @@ func (am *AcademicManager) GetPendingTasks(ctx context.Context, courses []Course
 
 		select {
 		case <-ctx.Done():
-			break
+			break taskLoop
 		case sem <- struct{}{}:
 		}
 
