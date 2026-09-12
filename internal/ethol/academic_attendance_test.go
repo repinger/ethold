@@ -38,9 +38,9 @@ func TestAcademicManager_Attendance(t *testing.T) {
 
 	// 1. Test Attendance Stats (1 student presence out of 2 lecturer meetings = 50.0%)
 	now := time.Date(2024, 9, 9, 10, 0, 0, 0, WIBLocation)
-	stats, err := am.GetAttendanceStats(ctx, 2024, 1, 1001, courses)
+	stats, err := am.getAttendanceStatsAt(ctx, now, 2024, 1, 1001, courses)
 	if err != nil {
-		t.Fatalf("GetAttendanceStats error: %v", err)
+		t.Fatalf("getAttendanceStatsAt error: %v", err)
 	}
 	if stats.Percentage != 50.0 {
 		t.Errorf("expected 50.0%% attendance, got %f", stats.Percentage)
@@ -93,9 +93,9 @@ func TestAcademicManager_Attendance_Caching(t *testing.T) {
 		{Nomor: 501, JenisSchema: 0, Matakuliah: "Basis Data", Dosen: "Ir. Dosen"},
 	}
 
-	stats1, err := am.GetAttendanceStats(ctx, 2024, 1, 1001, courses)
+	stats1, err := am.getAttendanceStatsAt(ctx, time.Now().In(WIBLocation), 2024, 1, 1001, courses)
 	if err != nil {
-		t.Fatalf("first GetAttendanceStats error: %v", err)
+		t.Fatalf("first getAttendanceStatsAt error: %v", err)
 	}
 	if stats1 == nil || len(stats1.Breakdown) != 1 {
 		t.Fatalf("unexpected stats1: %+v", stats1)
@@ -107,9 +107,9 @@ func TestAcademicManager_Attendance_Caching(t *testing.T) {
 		t.Fatalf("expected 1 dosen call, got %d", calls)
 	}
 
-	stats2, err := am.GetAttendanceStats(ctx, 2024, 1, 1001, courses)
+	stats2, err := am.getAttendanceStatsAt(ctx, time.Now().In(WIBLocation), 2024, 1, 1001, courses)
 	if err != nil {
-		t.Fatalf("second GetAttendanceStats error: %v", err)
+		t.Fatalf("second getAttendanceStatsAt error: %v", err)
 	}
 	if stats2 == nil || len(stats2.Breakdown) != 1 {
 		t.Fatalf("unexpected stats2: %+v", stats2)
@@ -122,7 +122,7 @@ func TestAcademicManager_Attendance_Caching(t *testing.T) {
 	}
 
 	am.InvalidateAttendanceCache()
-	_, _ = am.GetAttendanceStats(ctx, 2024, 1, 1001, courses)
+	_, _ = am.getAttendanceStatsAt(ctx, time.Now().In(WIBLocation), 2024, 1, 1001, courses)
 	if calls := atomic.LoadInt32(&riwayatCalls); calls != 2 {
 		t.Errorf("expected 2 riwayat calls after invalidation, got %d", calls)
 	}

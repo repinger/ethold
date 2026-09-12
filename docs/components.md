@@ -186,7 +186,7 @@ The academic module queries academic information including timetables, assignmen
 - `(am *AcademicManager) GetPendingTasks(ctx, courses)`: Fetches open assignments (`academic_tasks.go`).
 - `(am *AcademicManager) GetCourseMaterials(ctx, courses)`: Fetches uploaded materials (`academic_materials.go`).
 - `(am *AcademicManager) GetCourseVideos(ctx, courses)`: Fetches recorded videos (`academic_materials.go`).
-- `(am *AcademicManager) GetAttendanceStats(ctx, now, year, semester, studentID, courses)`: Computes attendance statistics (`academic_attendance.go`).
+- `(am *AcademicManager) FormatAttendanceStatsText(ctx, now, year, semester, studentID, courses)`: Computes and formats attendance statistics (`academic_attendance.go`).
 - `(am *AcademicManager) GetAttendanceRoster(ctx, course, key)`: Fetches attendees for a session (`academic_attendance.go`).
 - `(am *AcademicManager) StartNotificationPoller(ctx, interval, authFn, onPres, onTask)`: Periodically polls ETHOL notifications (`academic_notif.go`).
 - `(am *AcademicManager) InvalidateAllCaches()`: Clears all cached academic data (`academic.go`).

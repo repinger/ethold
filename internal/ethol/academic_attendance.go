@@ -166,10 +166,6 @@ func FormatRosterText(c Course, key string, attendees []RosterItem, totalEnrolle
 	return strings.TrimSpace(sb.String())
 }
 
-func (am *AcademicManager) GetAttendanceStats(ctx context.Context, tahun, semester, studentID int, courses []Course) (*AttendanceStats, error) {
-	return am.getAttendanceStatsAt(ctx, time.Now().In(WIBLocation), tahun, semester, studentID, courses)
-}
-
 func (am *AcademicManager) FormatAttendanceStatsText(ctx context.Context, now time.Time, tahun, semester, studentID int, courses []Course) (string, error) {
 	stats, err := am.getAttendanceStatsAt(ctx, now, tahun, semester, studentID, courses)
 	if err != nil {
