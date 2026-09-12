@@ -59,6 +59,10 @@ type Scanner struct {
 	minStagger   time.Duration
 	maxStagger   time.Duration
 	staggerMu    sync.RWMutex
+	cmdRateMu      sync.Mutex
+	lastRelogin    time.Time
+	lastRosterTime time.Time
+	lastRosterMsg  string
 }
 
 func NewScanner(
@@ -440,7 +444,16 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		if s.presence == nil {
 			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
 		}
-		attended, err := s.ScanOnce(ctx)
+		s.statusMu.RLock()
+		lastTime := s.lastScanTime
+		s.statusMu.RUnlock()
+		if !lastTime.IsZero() && time.Since(lastTime) < 15*time.Second {
+			return fmt.Sprintf("ℹ️ <b>Pemindaian Baru Saja Selesai</b>\nPemindaian baru saja dijalankan %v yang lalu. Gunakan /status untuk melihat hasil.", time.Since(lastTime).Round(time.Second))
+		}
+		attended, inProgress, err := s.TryScanOnce(ctx)
+		if inProgress {
+			return "⏳ <b>Pemindaian Sedang Berlangsung</b>\nDaemon sedang menjalankan pemindaian presensi. Harap tunggu hingga selesai."
+		}
 		if err != nil {
 			return fmt.Sprintf("❌ <b>Pemindaian Gagal:</b> %s", html.EscapeString(err.Error()))
 		}
@@ -519,6 +532,14 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		if s.academic == nil || s.presence == nil {
 			return "❌ Fitur presensi kelas tidak tersedia."
 		}
+		s.cmdRateMu.Lock()
+		if !s.lastRosterTime.IsZero() && time.Since(s.lastRosterTime) < 20*time.Second && s.lastRosterMsg != "" {
+			cachedMsg := s.lastRosterMsg
+			s.cmdRateMu.Unlock()
+			return cachedMsg
+		}
+		s.cmdRateMu.Unlock()
+
 		loadRoster := func() (string, error) {
 			courses, err := s.courses.GetCourses(ctx)
 			if err != nil {
@@ -548,6 +569,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		if err != nil {
 			return fmt.Sprintf("❌ <b>Gagal Mengambil Presensi Kelas:</b> %s", html.EscapeString(err.Error()))
 		}
+		s.cmdRateMu.Lock()
+		s.lastRosterTime = time.Now()
+		s.lastRosterMsg = msg
+		s.cmdRateMu.Unlock()
 		return msg
 
 	case "/rekap":
@@ -588,10 +613,22 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return msg
 
 	case "/relogin":
+		s.cmdRateMu.Lock()
+		if !s.lastRelogin.IsZero() && time.Since(s.lastRelogin) < 30*time.Second {
+			remaining := (30*time.Second - time.Since(s.lastRelogin)).Round(time.Second)
+			s.cmdRateMu.Unlock()
+			return fmt.Sprintf("⏳ <b>Relogin Dibatasi</b>\nSesi CAS baru saja diperbarui. Harap tunggu %v sebelum mencoba relogin lagi.", remaining)
+		}
+		s.cmdRateMu.Unlock()
+
 		user, err := s.auth.Relogin(ctx)
 		if err != nil {
 			return fmt.Sprintf("❌ <b>Relogin Gagal:</b> %s", html.EscapeString(err.Error()))
 		}
+		s.cmdRateMu.Lock()
+		s.lastRelogin = time.Now()
+		s.cmdRateMu.Unlock()
+
 		nama := ""
 		if user != nil {
 			nama = user.Nama
@@ -605,6 +642,34 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 
 func (s *Scanner) ScanOnce(ctx context.Context) (int, error) {
 	return s.ScanCourses(ctx, nil)
+}
+
+func (s *Scanner) TryScanOnce(ctx context.Context) (int, bool, error) {
+	return s.TryScanCourses(ctx, nil)
+}
+
+func (s *Scanner) TryScanCourses(ctx context.Context, targetCourses []Course) (int, bool, error) {
+	if s.presence == nil {
+		return 0, false, errors.New("auto-presence is disabled")
+	}
+
+	if !s.scanMu.TryLock() {
+		return 0, true, nil
+	}
+	defer s.scanMu.Unlock()
+
+	scanStart := time.Now()
+	attended, err := s.scanCoursesInternal(ctx, targetCourses)
+	scanDur := time.Since(scanStart)
+
+	s.statusMu.Lock()
+	s.lastScanTime = scanStart
+	s.lastScanDur = scanDur
+	s.lastScanErr = err
+	s.lastAttended = attended
+	s.statusMu.Unlock()
+
+	return attended, false, err
 }
 
 func (s *Scanner) ScanCourses(ctx context.Context, targetCourses []Course) (int, error) {

@@ -1130,4 +1130,197 @@ func TestScannerComputeScanPlanUnauthorizedRetry(t *testing.T) {
 	}
 }
 
+func TestScanner_Check_NonBlockingAndCooldown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login" method="post"><input name="username"/><input name="password"/></form>`)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "ETHOL_SESS", Value: "session-ok", Path: "/"})
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Write([]byte(`{"nomor":1001,"nama":"Budi","nipnrp":"3120600001"}`))
+		case "/api/auth/config":
+			json.NewEncoder(w).Encode(map[string]any{"tahun_aktif": 2024, "semester_aktif": 1})
+		case "/api/kuliah":
+			json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"nomor":       501,
+					"jenisSchema": 0,
+					"dosen":       "Dr. Tech",
+					"matakuliah":  map[string]any{"nama": "Algoritma"},
+				},
+			})
+		case "/api/presensi/aktif-kuliah":
+			json.NewEncoder(w).Encode([]any{})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
 
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	courses := NewCourseManager(client, server.URL, 10*time.Minute)
+	state, err := NewStateManager(filepath.Join(t.TempDir(), "keys.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	presence := NewPresenceEngine(client, server.URL)
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	scanner := NewScanner(auth, courses, presence, nil, state, notifier, 1)
+
+	ctx := context.Background()
+
+	// 1. In-progress scan simulation
+	scanner.scanMu.Lock()
+	inProgressReply := scanner.HandleTelegramCommand(ctx, "/check")
+	scanner.scanMu.Unlock()
+
+	if !strings.Contains(inProgressReply, "Sedang Berlangsung") {
+		t.Errorf("expected in-progress response, got: %s", inProgressReply)
+	}
+
+	// 2. Normal scan
+	normalReply := scanner.HandleTelegramCommand(ctx, "/check")
+	if !strings.Contains(normalReply, "Selesai") {
+		t.Errorf("expected completed scan response, got: %s", normalReply)
+	}
+
+	// 3. Immediate repeated check triggers cooldown
+	cooldownReply := scanner.HandleTelegramCommand(ctx, "/check")
+	if !strings.Contains(cooldownReply, "Baru Saja Selesai") {
+		t.Errorf("expected cooldown response, got: %s", cooldownReply)
+	}
+}
+
+func TestScanner_Relogin_Cooldown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login" method="post"><input name="username"/><input name="password"/></form>`)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "ETHOL_SESS", Value: "session-ok", Path: "/"})
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"nomor":1001,"nama":"Budi","nipnrp":"3120600001"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	courses := NewCourseManager(client, server.URL, 10*time.Minute)
+	state, err := NewStateManager(filepath.Join(t.TempDir(), "keys.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	presence := NewPresenceEngine(client, server.URL)
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	scanner := NewScanner(auth, courses, presence, nil, state, notifier, 1)
+
+	ctx := context.Background()
+
+	reply1 := scanner.HandleTelegramCommand(ctx, "/relogin")
+	if !strings.Contains(reply1, "Berhasil") {
+		t.Errorf("expected first relogin to succeed, got: %s", reply1)
+	}
+
+	reply2 := scanner.HandleTelegramCommand(ctx, "/relogin")
+	if !strings.Contains(reply2, "Dibatasi") {
+		t.Errorf("expected second relogin to be rate limited/cooldown, got: %s", reply2)
+	}
+}
+
+func TestScanner_Roster_Cache(t *testing.T) {
+	var checkCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login" method="post"><input name="username"/><input name="password"/></form>`)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "ETHOL_SESS", Value: "session-ok", Path: "/"})
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Write([]byte(`{"nomor":1001,"nama":"Budi","nipnrp":"3120600001"}`))
+		case "/api/auth/config":
+			json.NewEncoder(w).Encode(map[string]any{"tahun_aktif": 2024, "semester_aktif": 1})
+		case "/api/kuliah":
+			json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"nomor":       501,
+					"jenisSchema": 0,
+					"dosen":       "Dr. Tech",
+					"matakuliah":  map[string]any{"nama": "Algoritma"},
+				},
+			})
+		case "/api/presensi/aktif-kuliah":
+			checkCalls.Add(1)
+			json.NewEncoder(w).Encode([]any{})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	courses := NewCourseManager(client, server.URL, 10*time.Minute)
+	academic := NewAcademicManager(client, server.URL, 10*time.Minute)
+	state, err := NewStateManager(filepath.Join(t.TempDir(), "keys.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	presence := NewPresenceEngine(client, server.URL)
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	scanner := NewScanner(auth, courses, presence, academic, state, notifier, 1)
+
+	ctx := context.Background()
+
+	reply1 := scanner.HandleTelegramCommand(ctx, "/presensi_kelas")
+	callsAfter1 := checkCalls.Load()
+	if callsAfter1 != 1 {
+		t.Errorf("expected 1 call to check course presence, got %d", callsAfter1)
+	}
+
+	reply2 := scanner.HandleTelegramCommand(ctx, "/presensi_kelas")
+	callsAfter2 := checkCalls.Load()
+	if callsAfter2 != callsAfter1 {
+		t.Errorf("expected cached roster response, calls increased from %d to %d", callsAfter1, callsAfter2)
+	}
+	if reply1 != reply2 {
+		t.Errorf("expected identical cached reply, got %q vs %q", reply1, reply2)
+	}
+}
