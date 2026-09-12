@@ -15,6 +15,12 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	configPath := flag.String("config", ".env", "Path to .env config file")
 	statePath := flag.String("state", "attended_keys.json", "Path to state file")
 	once := flag.Bool("once", false, "Run single scan pass and exit")
@@ -40,13 +46,13 @@ func main() {
 	})
 	if err != nil {
 		slog.Error("Failed to load configuration", "path", *configPath, "error", err)
-		os.Exit(1)
+		return err
 	}
 
 	client, err := ethol.NewHTTPClient()
 	if err != nil {
 		slog.Error("Failed to create HTTP client", "error", err)
-		os.Exit(1)
+		return err
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -66,7 +72,7 @@ func main() {
 		state, err = ethol.NewStateManager(*statePath)
 		if err != nil {
 			slog.Error("Failed to initialize state manager", "path", *statePath, "error", err)
-			os.Exit(1)
+			return err
 		}
 		presence = ethol.NewPresenceEngine(client, baseURL)
 	} else {
@@ -76,7 +82,7 @@ func main() {
 	// Initial authentication test
 	if _, err := auth.Login(ctx); err != nil {
 		slog.Error("Initial CAS SSO login failed", "error", err)
-		os.Exit(1)
+		return err
 	}
 
 	scanner := ethol.NewScanner(auth, courses, presence, academic, state, notifier, *concurrency)
@@ -98,28 +104,29 @@ func main() {
 	if *once {
 		if !cfg.AutoPresence {
 			slog.Info("Auto-presence is disabled, nothing to scan")
-			return
+			return nil
 		}
 		slog.Info("Running in single-pass scan mode")
 		attended, err := scanner.ScanOnce(ctx)
 		if err != nil {
 			slog.Error("Scan failed", "error", err)
-			os.Exit(1)
+			return err
 		}
 		slog.Info("Scan completed", "attended", attended)
-		return
+		return nil
 	}
 
 	if !cfg.AutoPresence {
 		slog.Info("Academic daemon running (auto-presence disabled)")
 		<-ctx.Done()
 		slog.Info("Daemon stopped")
-		return
+		return nil
 	}
 
 	slog.Info("Starting auto-presence daemon", "concurrency", *concurrency)
 	if err := scanner.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Daemon stopped with error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
