@@ -61,14 +61,6 @@ var browserProfiles = []browserProfile{
 	},
 }
 
-var legitUserAgents = func() []string {
-	uas := make([]string, len(browserProfiles))
-	for i, p := range browserProfiles {
-		uas[i] = p.userAgent
-	}
-	return uas
-}()
-
 type headerTransport struct {
 	base    http.RoundTripper
 	profile browserProfile

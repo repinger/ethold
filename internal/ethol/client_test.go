@@ -7,6 +7,14 @@ import (
 	"testing"
 )
 
+var legitUserAgents = func() []string {
+	uas := make([]string, len(browserProfiles))
+	for i, p := range browserProfiles {
+		uas[i] = p.userAgent
+	}
+	return uas
+}()
+
 func TestNewHTTPClient_UserAgent(t *testing.T) {
 	var gotUA string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
