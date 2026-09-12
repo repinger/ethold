@@ -165,3 +165,12 @@ func BenchmarkExtractPresenceKey_Object(b *testing.B) {
 		_ = extractPresenceKey(raw)
 	}
 }
+
+func BenchmarkExtractPresenceKey_Empty(b *testing.B) {
+	// ponytail: empty array payload, add malformed JSON when parser resilience benchmarked
+	raw := []byte(`[]`)
+	b.ResetTimer()
+	for b.Loop() {
+		_ = extractPresenceKey(raw)
+	}
+}
