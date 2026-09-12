@@ -136,7 +136,8 @@ docker run -d \
   --restart unless-stopped \
   --env-file .env \
   -v ethold_state:/app/data \
-  ghcr.io/repinger/ethold:latest
+  ghcr.io/repinger/ethold:latest \
+  --state /app/data/attended_keys.json
 ```
 
 ### Docker Compose

@@ -16,3 +16,4 @@ COPY --from=builder --chown=65532:65532 /app/data /app/data
 COPY --from=builder /ethold /app/ethold
 USER nonroot:nonroot
 ENTRYPOINT ["/app/ethold"]
+CMD ["--state", "/app/data/attended_keys.json"]
