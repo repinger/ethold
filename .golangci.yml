@@ -9,7 +9,6 @@ linters:
         - (io.Closer).Close
         - (*os.File).Close
         - os.Remove
-        - io.Copy
     staticcheck:
       checks:
         - all

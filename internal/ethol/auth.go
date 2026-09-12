@@ -103,7 +103,7 @@ func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("post cas credentials: %w", err)
 	}
-	io.Copy(io.Discard, postResp.Body)
+	_, _ = io.Copy(io.Discard, postResp.Body)
 	postResp.Body.Close()
 
 	// 4. Validate token
@@ -183,7 +183,7 @@ func (a *AuthManager) EnsureSession(ctx context.Context) error {
 	if err == nil {
 		resp, doErr := a.client.Do(req)
 		if doErr == nil {
-			io.Copy(io.Discard, resp.Body)
+			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				a.mu.Lock()
