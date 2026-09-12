@@ -207,3 +207,48 @@ func TestCalculateJitter(t *testing.T) {
 	}
 }
 
+func BenchmarkComputeScanWindows(b *testing.B) {
+	// ponytail: fixed 8 items, add varied day generators when dynamic schedule profiling needed
+	items := []ScheduleItem{
+		{Hari: "Senin", JamAwal: "08:00", JamAkhir: "09:40", Kuliah: 101, Matakuliah: "Algoritma"},
+		{Hari: "Senin", JamAwal: "09:40", JamAkhir: "11:20", Kuliah: 102, Matakuliah: "Struktur Data"},
+		{Hari: "Senin", JamAwal: "13:00", JamAkhir: "14:40", Kuliah: 103, Matakuliah: "Basis Data"},
+		{Hari: "Senin", JamAwal: "14:40", JamAkhir: "16:20", Kuliah: 104, Matakuliah: "Jaringan"},
+		{Hari: "Selasa", JamAwal: "08:00", JamAkhir: "09:40", Kuliah: 105, Matakuliah: "Matematika"},
+		{Hari: "Rabu", JamAwal: "08:00", JamAkhir: "09:40", Kuliah: 106, Matakuliah: "Fisika"},
+		{Hari: "Kamis", JamAwal: "08:00", JamAkhir: "09:40", Kuliah: 107, Matakuliah: "Bahasa"},
+		{Hari: "Jumat", JamAwal: "08:00", JamAkhir: "09:40", Kuliah: 108, Matakuliah: "Agama"},
+	}
+	courses := []Course{
+		{Nomor: 101, NamaMatakuliah: "Algoritma"},
+		{Nomor: 102, NamaMatakuliah: "Struktur Data"},
+		{Nomor: 103, NamaMatakuliah: "Basis Data"},
+		{Nomor: 104, NamaMatakuliah: "Jaringan"},
+	}
+	day := time.Date(2024, 1, 15, 0, 0, 0, 0, WIBLocation)
+	b.ResetTimer()
+	for b.Loop() {
+		_ = ComputeScanWindows(items, courses, day)
+	}
+}
+
+func BenchmarkNextScanPlan(b *testing.B) {
+	// ponytail: 2 windows, add multi-window slice when scheduling scales
+	windows := []ScanWindow{
+		{
+			Start:   time.Date(2024, 1, 15, 7, 45, 0, 0, WIBLocation),
+			End:     time.Date(2024, 1, 15, 11, 35, 0, 0, WIBLocation),
+			Courses: []Course{{Nomor: 101}},
+		},
+		{
+			Start:   time.Date(2024, 1, 15, 12, 45, 0, 0, WIBLocation),
+			End:     time.Date(2024, 1, 15, 16, 35, 0, 0, WIBLocation),
+			Courses: []Course{{Nomor: 102}},
+		},
+	}
+	now := time.Date(2024, 1, 15, 9, 0, 0, 0, WIBLocation)
+	b.ResetTimer()
+	for b.Loop() {
+		_ = NextScanPlan(now, windows)
+	}
+}
