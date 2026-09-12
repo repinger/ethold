@@ -19,7 +19,7 @@ func TestStateManager(t *testing.T) {
 		t.Fatal("expected key1 to be absent")
 	}
 
-	if err := sm.Add("key1", "key2"); err != nil {
+	if err := sm.AddRecord(PresenceRecord{Key: "key1"}, PresenceRecord{Key: "key2"}); err != nil {
 		t.Fatalf("add keys: %v", err)
 	}
 
@@ -39,16 +39,16 @@ func TestStateManager(t *testing.T) {
 		t.Fatal("persisted keys not found after reload")
 	}
 
-	if err := sm2.Add("2026-09-10_abc", "2026-09-10_def", "2026-09-09_xyz"); err != nil {
+	if err := sm2.AddRecord(PresenceRecord{Key: "2026-09-10_abc"}, PresenceRecord{Key: "2026-09-10_def"}, PresenceRecord{Key: "2026-09-09_xyz"}); err != nil {
 		t.Fatalf("add prefixed keys: %v", err)
 	}
 
-	todayKeys := sm2.KeysWithPrefix("2026-09-10_")
-	if len(todayKeys) != 2 {
-		t.Fatalf("expected 2 keys with prefix, got %d", len(todayKeys))
+	todayRecords := sm2.RecordsWithPrefix("2026-09-10_")
+	if len(todayRecords) != 2 {
+		t.Fatalf("expected 2 records with prefix, got %d", len(todayRecords))
 	}
-	if todayKeys[0] != "2026-09-10_abc" || todayKeys[1] != "2026-09-10_def" {
-		t.Fatalf("unexpected keys: %v", todayKeys)
+	if todayRecords[0].Key != "2026-09-10_abc" || todayRecords[1].Key != "2026-09-10_def" {
+		t.Fatalf("unexpected records: %v", todayRecords)
 	}
 }
 
@@ -60,7 +60,7 @@ func TestStateManager_CreatesDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nested directory to be created: %v", err)
 	}
-	if err := sm.Add("test-key"); err != nil {
+	if err := sm.AddRecord(PresenceRecord{Key: "test-key"}); err != nil {
 		t.Fatalf("failed to add key: %v", err)
 	}
 }
@@ -149,24 +149,6 @@ func TestStateManager_CountWithPrefix(t *testing.T) {
 	}
 	if cnt := sm.CountWithPrefix("2026-09-12_"); cnt != 0 {
 		t.Fatalf("expected 0, got %d", cnt)
-	}
-}
-
-func BenchmarkStateManager_KeysWithPrefix(b *testing.B) {
-	sm := &StateManager{
-		records: make(map[string]PresenceRecord),
-	}
-	for i := 0; i < 100; i++ {
-		k := "2026-09-11_" + string(rune('A'+i))
-		sm.records[k] = PresenceRecord{Key: k}
-	}
-	for i := 0; i < 50; i++ {
-		k := "2026-09-10_" + string(rune('A'+i))
-		sm.records[k] = PresenceRecord{Key: k}
-	}
-	b.ResetTimer()
-	for b.Loop() {
-		_ = sm.KeysWithPrefix("2026-09-11_")
 	}
 }
 

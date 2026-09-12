@@ -111,20 +111,6 @@ func (sm *StateManager) CountWithPrefix(prefix string) int {
 	return count
 }
 
-func (sm *StateManager) KeysWithPrefix(prefix string) []string {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
-	var matched []string
-	for k := range sm.records {
-		if strings.HasPrefix(k, prefix) {
-			matched = append(matched, k)
-		}
-	}
-	slices.Sort(matched)
-	return matched
-}
-
 // RecordsWithPrefix returns all presence records whose key starts with prefix, sorted by key.
 func (sm *StateManager) RecordsWithPrefix(prefix string) []PresenceRecord {
 	sm.mu.RLock()
@@ -140,19 +126,6 @@ func (sm *StateManager) RecordsWithPrefix(prefix string) []PresenceRecord {
 		return strings.Compare(a.Key, b.Key)
 	})
 	return matched
-}
-
-func (sm *StateManager) Add(keys ...string) error {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	for _, k := range keys {
-		if _, exists := sm.records[k]; !exists {
-			sm.records[k] = PresenceRecord{Key: k}
-		}
-	}
-
-	return sm.saveLocked()
 }
 
 // AddRecord adds presence records with course metadata.
