@@ -154,3 +154,25 @@ func TestLoadConfigAutoPresence(t *testing.T) {
 	}
 }
 
+func BenchmarkParseEnv(b *testing.B) {
+	// ponytail: static 15-line env fixture, add file loader benchmark when env size grows
+	raw := []byte(`# Configuration for ethold
+ETHOL_USERNAME=3120600001
+ETHOL_PASSWORD="secret_password_here"
+ETHOL_BASE_URL='https://ethol.pens.ac.id'
+ETHOL_CAS_URL=https://cas.pens.ac.id/cas
+
+# Notification
+ETHOL_TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+ETHOL_TELEGRAM_CHAT_ID="999888777"
+
+# Intervals
+ETHOL_POLL_INTERVAL=60s
+ETHOL_AUTO_PRESENCE=true
+export ETHOL_DEBUG=1
+`)
+	b.ResetTimer()
+	for b.Loop() {
+		_ = parseEnv(raw)
+	}
+}
