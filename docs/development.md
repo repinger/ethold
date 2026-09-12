@@ -48,6 +48,7 @@ go build -o ethold ./cmd/ethold
 Run static analysis checks:
 ```bash
 go vet ./...
+golangci-lint run ./...
 ```
 
 Format all Go source files:

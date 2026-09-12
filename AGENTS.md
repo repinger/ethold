@@ -13,9 +13,10 @@ go test -v -run TestFoo ./internal/ethol                   # single test
 go test -run='^$' -bench=. -benchmem ./internal/ethol      # all benchmarks
 go test -run='^$' -bench=BenchmarkFoo -benchmem ./internal/ethol # single benchmark
 go vet ./...                                               # vet
+golangci-lint run ./...                                    # lint
 ```
 
-No linter config, no CI, no pre-commit hooks. Tests use `t.TempDir()` for isolation; no external services or fixtures required.
+Linter config at `.golangci.yml`. Tests use `t.TempDir()` for isolation; no external services or fixtures required.
 
 ## Structure
 
