@@ -294,9 +294,9 @@ func parseClockToTime(clockStr string, base time.Time) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	min, err := strconv.Atoi(s[sep+1:])
+	minute, err := strconv.Atoi(s[sep+1:])
 	if err != nil {
 		return time.Time{}, err
 	}
-	return time.Date(base.Year(), base.Month(), base.Day(), hour, min, 0, 0, WIBLocation), nil
+	return time.Date(base.Year(), base.Month(), base.Day(), hour, minute, 0, 0, WIBLocation), nil
 }
