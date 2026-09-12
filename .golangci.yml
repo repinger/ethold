@@ -2,6 +2,21 @@ version: "2"
 
 linters:
   default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - durationcheck
+    - errorlint
+    - gocritic
+    - gosec
+    - makezero
+    - nilerr
+    - noctx
+    - nolintlint
+    - predeclared
+    - reassign
+    - sloglint
+    - unparam
   settings:
     errcheck:
       exclude-functions:
@@ -9,6 +24,24 @@ linters:
         - (io.Closer).Close
         - (*os.File).Close
         - os.Remove
+    gocritic:
+      enabled-tags:
+        - diagnostic
+      disabled-tags:
+        - style
+    gosec:
+      excludes:
+        - G104 # Unhandled errors (managed by errcheck)
+        - G404 # Insecure random generator (math/rand/v2 intentionally used for jitter and profile selection)
+        - G304 # File inclusion via variable (config and state paths provided by CLI/env)
+        - G301 # Directory creation permissions (0755 standard for daemon storage)
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    sloglint:
+      no-mixed-args: true
+      kv-only: true
+      static-msg: true
     staticcheck:
       checks:
         - all
@@ -24,3 +57,4 @@ linters:
       - path: '.*_test\.go'
         linters:
           - errcheck
+          - gosec
