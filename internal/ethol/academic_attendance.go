@@ -27,12 +27,11 @@ type AttendanceStats struct {
 }
 
 type CourseAttendance struct {
-	KuliahID int
-	Nama     string
-	Hadir    int
-	Total    int
-	DToday   int
-	MToday   int
+	Nama   string
+	Hadir  int
+	Total  int
+	DToday int
+	MToday int
 }
 
 type studentHistoryItem struct {
@@ -310,12 +309,11 @@ func (am *AcademicManager) fetchCourseAttendance(ctx context.Context, c Course, 
 	}
 
 	return CourseAttendance{
-		KuliahID: c.Nomor,
-		Nama:     c.CourseName(),
-		Hadir:    hadir,
-		Total:    total,
-		DToday:   dToday,
-		MToday:   mToday,
+		Nama:   c.CourseName(),
+		Hadir:  hadir,
+		Total:  total,
+		DToday: dToday,
+		MToday: mToday,
 	}, nil
 }
 
