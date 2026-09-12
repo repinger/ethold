@@ -134,10 +134,11 @@ Run directly with Docker:
 docker run -d \
   --name ethold \
   --restart unless-stopped \
-  --env-file .env \
+  -e ETHOL_USERNAME=foo \
+  -e ETHOL_PASSWORD=p@ssw0rd \
+  -e ETHOL_AUTO_PRESENCE=true \
   -v ethold_state:/app/data \
-  ghcr.io/repinger/ethold:latest \
-  --state /app/data/attended_keys.json
+  ghcr.io/repinger/ethold:latest
 ```
 
 ### Docker Compose
