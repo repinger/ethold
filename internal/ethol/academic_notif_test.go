@@ -3,6 +3,7 @@ package ethol
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -130,7 +131,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 	defer unauthServer.Close()
 
 	unauthAM := NewAcademicManager(client, unauthServer.URL, 5*time.Minute)
-	if err := unauthAM.PollNotifications(ctx, nil, nil); err != ErrUnauthorized {
+	if err := unauthAM.PollNotifications(ctx, nil, nil); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized, got %v", err)
 	}
 }

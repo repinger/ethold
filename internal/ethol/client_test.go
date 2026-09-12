@@ -28,14 +28,16 @@ func TestNewHTTPClient_UserAgent(t *testing.T) {
 		t.Fatalf("NewHTTPClient: %v", err)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	if _, err := client.Do(req); err != nil {
+	resp, err := client.Do(req)
+	if err != nil {
 		t.Fatalf("client.Do: %v", err)
 	}
+	defer resp.Body.Close()
 
 	if !slices.Contains(legitUserAgents, gotUA) {
 		t.Errorf("got unexpected User-Agent: %q", gotUA)
@@ -55,15 +57,17 @@ func TestNewHTTPClient_PreservesExplicitUserAgent(t *testing.T) {
 		t.Fatalf("NewHTTPClient: %v", err)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	req.Header.Set("User-Agent", "CustomAgent/1.0")
 
-	if _, err := client.Do(req); err != nil {
+	resp, err := client.Do(req)
+	if err != nil {
 		t.Fatalf("client.Do: %v", err)
 	}
+	defer resp.Body.Close()
 
 	if gotUA != "CustomAgent/1.0" {
 		t.Errorf("got %q, want %q", gotUA, "CustomAgent/1.0")
@@ -83,14 +87,16 @@ func TestNewHTTPClient_TargetHostHeaders(t *testing.T) {
 		t.Fatalf("NewHTTPClient: %v", err)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	if _, err := client.Do(req); err != nil {
+	resp, err := client.Do(req)
+	if err != nil {
 		t.Fatalf("client.Do: %v", err)
 	}
+	defer resp.Body.Close()
 
 	if got := captured.Get("Accept-Language"); got != "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7" {
 		t.Errorf("Accept-Language = %q, want id-ID preference", got)
@@ -129,14 +135,16 @@ func TestNewHTTPClient_ExternalHostSkipsTargetHeaders(t *testing.T) {
 		profile: transport.profile,
 	}
 
-	req, err := http.NewRequest(http.MethodGet, "https://api.telegram.org/bot123/getMe", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://api.telegram.org/bot123/getMe", nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	if _, err := client.Do(req); err != nil {
+	resp, err := client.Do(req)
+	if err != nil {
 		t.Fatalf("client.Do: %v", err)
 	}
+	defer resp.Body.Close()
 
 	if got := captured.Get("User-Agent"); got == "" {
 		t.Error("User-Agent should be set on external host")
@@ -165,16 +173,18 @@ func TestNewHTTPClient_PreservesExplicitHeaders(t *testing.T) {
 		t.Fatalf("NewHTTPClient: %v", err)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	req.Header.Set("Accept", "text/html")
 	req.Header.Set("Accept-Language", "en-US")
 
-	if _, err := client.Do(req); err != nil {
+	resp, err := client.Do(req)
+	if err != nil {
 		t.Fatalf("client.Do: %v", err)
 	}
+	defer resp.Body.Close()
 
 	if got := captured.Get("Accept"); got != "text/html" {
 		t.Errorf("Accept = %q, want text/html", got)

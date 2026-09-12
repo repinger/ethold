@@ -2,6 +2,7 @@ package ethol
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -119,10 +120,10 @@ func TestAcademicManager_MaterialsAndVideos(t *testing.T) {
 	defer unauthServer.Close()
 
 	unauthAM := NewAcademicManager(client, unauthServer.URL, 5*time.Minute)
-	if _, err := unauthAM.GetCourseMaterials(ctx, courses); err != ErrUnauthorized {
+	if _, err := unauthAM.GetCourseMaterials(ctx, courses); !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized for materials, got %v", err)
 	}
-	if _, err := unauthAM.GetCourseVideos(ctx, courses); err != ErrUnauthorized {
+	if _, err := unauthAM.GetCourseVideos(ctx, courses); !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized for videos, got %v", err)
 	}
 }

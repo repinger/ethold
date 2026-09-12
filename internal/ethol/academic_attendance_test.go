@@ -2,6 +2,7 @@ package ethol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -206,7 +207,7 @@ func TestAcademicManager_AttendanceRoster(t *testing.T) {
 	defer unauthServer.Close()
 
 	unauthAM := NewAcademicManager(client, unauthServer.URL, 5*time.Minute)
-	if _, _, err := unauthAM.GetAttendanceRoster(ctx, course, "KEY"); err != ErrUnauthorized {
+	if _, _, err := unauthAM.GetAttendanceRoster(ctx, course, "KEY"); !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized for roster, got %v", err)
 	}
 }
