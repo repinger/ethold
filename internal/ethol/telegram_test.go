@@ -240,3 +240,144 @@ func TestTelegramNotifier_SanitizeError(t *testing.T) {
 		t.Errorf("expected [REDACTED] in sanitized error: %v", sanitized)
 	}
 }
+
+func TestTelegramNotifier_RateLimiter_SpamSuppression(t *testing.T) {
+	var sentMessages []string
+	var sentMu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			var updates []tgUpdate
+			for i := 1; i <= 10; i++ {
+				updates = append(updates, tgUpdate{
+					UpdateID: int64(100 + i),
+					Message: &tgMessage{
+						MessageID: int64(i),
+						Chat:      tgChat{ID: 555},
+						Text:      "/status",
+					},
+				})
+			}
+			json.NewEncoder(w).Encode(tgUpdatesResponse{Ok: true, Result: updates})
+		case "/bot123/sendMessage":
+			var p tgSendMessagePayload
+			_ = json.NewDecoder(r.Body).Decode(&p)
+			sentMu.Lock()
+			sentMessages = append(sentMessages, p.Text)
+			sentMu.Unlock()
+			w.Write([]byte(`{"ok":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "555")
+	var handledCount int
+	handler := func(ctx context.Context, cmd string) string {
+		handledCount++
+		return "status-ok"
+	}
+
+	nextOffset, err := tn.PollOnce(context.Background(), 1, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+	if nextOffset != 111 {
+		t.Errorf("expected nextOffset 111, got %d", nextOffset)
+	}
+
+	// Burst is 3, so only 3 commands should be executed
+	if handledCount != 3 {
+		t.Errorf("expected 3 handled commands, got %d", handledCount)
+	}
+
+	sentMu.Lock()
+	defer sentMu.Unlock()
+	// 3 replies + 1 rate-limit warning (subsequent rate-limited commands suppressed)
+	if len(sentMessages) != 4 {
+		t.Fatalf("expected 4 sent messages (3 replies + 1 warning), got %d: %v", len(sentMessages), sentMessages)
+	}
+	if !strings.Contains(sentMessages[3], "Terlalu banyak perintah") {
+		t.Errorf("expected warning message at index 3, got %q", sentMessages[3])
+	}
+}
+
+func TestTelegramNotifier_SendMessage_Retry429(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		att := attempts.Add(1)
+		if att == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"ok":false,"error_code":429,"description":"Too Many Requests","parameters":{"retry_after":1}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "token", "chat1")
+	err = tn.SendMessage(context.Background(), "test retry")
+	if err != nil {
+		t.Fatalf("expected SendMessage to succeed after retry, got %v", err)
+	}
+	if attempts.Load() != 2 {
+		t.Errorf("expected 2 attempts, got %d", attempts.Load())
+	}
+}
+
+func TestTelegramNotifier_CommandTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			json.NewEncoder(w).Encode(tgUpdatesResponse{
+				Ok: true,
+				Result: []tgUpdate{
+					{
+						UpdateID: 200,
+						Message: &tgMessage{
+							MessageID: 1,
+							Chat:      tgChat{ID: 777},
+							Text:      "/slow",
+						},
+					},
+				},
+			})
+		case "/bot123/sendMessage":
+			w.Write([]byte(`{"ok":true}`))
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "777")
+	var hasDeadline bool
+	handler := func(ctx context.Context, cmd string) string {
+		_, hasDeadline = ctx.Deadline()
+		return "done"
+	}
+
+	_, err = tn.PollOnce(context.Background(), 1, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+	if !hasDeadline {
+		t.Error("expected command context to have a deadline/timeout set")
+	}
+}

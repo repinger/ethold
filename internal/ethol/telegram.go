@@ -12,16 +12,61 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
+type chatRateLimiter struct {
+	mu           sync.Mutex
+	tokens       float64
+	maxTokens    float64
+	refillRate   float64
+	lastRefill   time.Time
+	lastWarnTime time.Time
+}
+
+func newChatRateLimiter(burst float64, refillPerSec float64) *chatRateLimiter {
+	return &chatRateLimiter{
+		tokens:     burst,
+		maxTokens:  burst,
+		refillRate: refillPerSec,
+		lastRefill: time.Now(),
+	}
+}
+
+func (rl *chatRateLimiter) Allow(now time.Time, warnCooldown time.Duration) (allowed bool, warnAllowed bool) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	elapsed := now.Sub(rl.lastRefill).Seconds()
+	rl.lastRefill = now
+	rl.tokens += elapsed * rl.refillRate
+	if rl.tokens > rl.maxTokens {
+		rl.tokens = rl.maxTokens
+	}
+
+	if rl.tokens >= 1.0 {
+		rl.tokens -= 1.0
+		return true, false
+	}
+
+	if rl.lastWarnTime.IsZero() || now.Sub(rl.lastWarnTime) >= warnCooldown {
+		rl.lastWarnTime = now
+		return false, true
+	}
+	return false, false
+}
+
 type TelegramNotifier struct {
-	client     *http.Client
-	pollClient *http.Client
-	baseURL    string
-	token      string
-	chatID     string
-	chatIDInt  int64
+	client        *http.Client
+	pollClient    *http.Client
+	baseURL       string
+	token         string
+	chatID        string
+	chatIDInt     int64
+	rateLimiter   *chatRateLimiter
+	unauthMu      sync.Mutex
+	lastUnauthLog time.Time
 }
 
 func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *TelegramNotifier {
@@ -36,12 +81,13 @@ func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *Te
 	}
 	cid, _ := strconv.ParseInt(strings.TrimSpace(chatID), 10, 64)
 	return &TelegramNotifier{
-		client:     client,
-		pollClient: pollClient,
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		token:      token,
-		chatID:     chatID,
-		chatIDInt:  cid,
+		client:      client,
+		pollClient:  pollClient,
+		baseURL:     strings.TrimRight(baseURL, "/"),
+		token:       token,
+		chatID:      chatID,
+		chatIDInt:   cid,
+		rateLimiter: newChatRateLimiter(3, 1.0),
 	}
 }
 
@@ -109,12 +155,39 @@ func (tn *TelegramNotifier) SendMessage(ctx context.Context, text string) error 
 	}
 
 	chunks := splitMessage(text, maxTelegramMessageLen)
-	for _, chunk := range chunks {
+	for i, chunk := range chunks {
+		if i > 0 {
+			timer := time.NewTimer(100 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
 		if err := tn.sendSingleMessage(ctx, chunk); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+type tgErrorParameters struct {
+	RetryAfter int `json:"retry_after"`
+}
+
+type tgErrorBody struct {
+	Ok          bool              `json:"ok"`
+	Description string            `json:"description"`
+	Parameters  tgErrorParameters `json:"parameters"`
+}
+
+func extractRetryAfter(body []byte) int {
+	var eb tgErrorBody
+	if err := json.Unmarshal(body, &eb); err == nil && eb.Parameters.RetryAfter > 0 {
+		return eb.Parameters.RetryAfter
+	}
+	return 0
 }
 
 func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) error {
@@ -130,21 +203,41 @@ func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) 
 	}
 
 	endpoint := fmt.Sprintf("%s/bot%s/sendMessage", tn.baseURL, tn.token)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
-	if err != nil {
-		return tn.sanitizeError(fmt.Errorf("create telegram req: %w", err))
-	}
-	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := tn.client.Do(req)
-	if err != nil {
-		return tn.sanitizeError(fmt.Errorf("send telegram request: %w", err))
-	}
-	defer resp.Body.Close()
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+		if err != nil {
+			return tn.sanitizeError(fmt.Errorf("create telegram req: %w", err))
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		resp, err := tn.client.Do(req)
+		if err != nil {
+			return tn.sanitizeError(fmt.Errorf("send telegram request: %w", err))
+		}
 
-	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			return nil
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
+			waitSec := extractRetryAfter(respBody)
+			if waitSec <= 0 || waitSec > 5 {
+				waitSec = 1
+			}
+			timer := time.NewTimer(time.Duration(waitSec) * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+				continue
+			}
+		}
+
 		errText := strings.TrimSpace(string(respBody))
 		if errText != "" {
 			return tn.sanitizeError(fmt.Errorf("telegram api error: HTTP %d: %s", resp.StatusCode, errText))
@@ -152,7 +245,7 @@ func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) 
 		return fmt.Errorf("telegram api error: HTTP %d", resp.StatusCode)
 	}
 
-	return nil
+	return fmt.Errorf("telegram api error: rate limit exceeded")
 }
 
 func (tn *TelegramNotifier) NotifyPresenceSuccess(ctx context.Context, mkName, dosen, key, respMsg string) error {
@@ -258,14 +351,35 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			continue
 		}
 		if (tn.chatIDInt != 0 && u.Message.Chat.ID != tn.chatIDInt) || (tn.chatIDInt == 0 && strconv.FormatInt(u.Message.Chat.ID, 10) != tn.chatID) {
-			slog.Warn("Ignoring Telegram command from unauthorized chat", "chat_id", u.Message.Chat.ID)
+			now := time.Now()
+			tn.unauthMu.Lock()
+			shouldLog := tn.lastUnauthLog.IsZero() || now.Sub(tn.lastUnauthLog) >= 5*time.Second
+			if shouldLog {
+				tn.lastUnauthLog = now
+			}
+			tn.unauthMu.Unlock()
+			if shouldLog {
+				slog.Warn("Ignoring Telegram command from unauthorized chat", "chat_id", u.Message.Chat.ID)
+			}
 			continue
 		}
 		cmd := parseCommand(u.Message.Text)
 		if cmd == "" {
 			continue
 		}
-		reply := handler(ctx, cmd)
+		if tn.rateLimiter != nil {
+			allowed, warnAllowed := tn.rateLimiter.Allow(time.Now(), 5*time.Second)
+			if !allowed {
+				slog.Warn("Telegram command rate limited", "cmd", cmd)
+				if warnAllowed {
+					_ = tn.SendMessage(ctx, "⏳ <b>Terlalu banyak perintah.</b> Harap tunggu beberapa detik.")
+				}
+				continue
+			}
+		}
+		cmdCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+		reply := handler(cmdCtx, cmd)
+		cancel()
 		if reply != "" {
 			if err := tn.SendMessage(ctx, reply); err != nil {
 				slog.Error("Failed to reply to Telegram command", "cmd", cmd, "error", err)
