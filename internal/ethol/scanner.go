@@ -33,7 +33,6 @@ type ScannerStatus struct {
 	ActiveCourse     string
 	CourseCount      int
 	Goroutines       int
-	AllocMemMB       float64
 }
 
 type Scanner struct {
