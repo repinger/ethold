@@ -40,6 +40,11 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2
+
       - name: Build binary check
         run: go build -v ./cmd/ethold
 
