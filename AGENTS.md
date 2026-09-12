@@ -42,7 +42,10 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
 
 ## Conventions
 
-- Commit style: `type(scope): message` (conventional commits)
+- Commit style: `subsystem: imperative summary` (max 75 chars)
+  - Body: describe problem and technical solution in detail, wrapped at 75 columns
+  - AI agents MUST NOT add `Signed-off-by` tags (only human contributors certify DCO)
+  - AI-assisted commits MUST include: `Assisted-by: <model-name> <tool>` (e.g. `Assisted-by: gemini-3.8-flash-medium Antigravity`)
 - All code in one flat package under `internal/ethol` — no sub-packages
 - Config via `.env` file (custom parser, not third-party); see `.env.example`
 - State persisted as atomic JSON writes to `attended_keys.json`
