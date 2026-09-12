@@ -145,17 +145,10 @@ func (am *AcademicManager) FormatTasksText(ctx context.Context, courses []Course
 	sb.WriteString(fmt.Sprintf("📝 <b>DAFTAR TUGAS BELUM SELESAI (%d)</b>\n\n", len(tasks)))
 
 	for i, task := range tasks {
-		title := task.Title
-		if title == "" {
-			title = task.Judul
-		}
-		title = html.EscapeString(title)
+		title := html.EscapeString(task.Title)
 
 		matkul := html.EscapeString(task.CourseName)
 		deadline := task.Deadline
-		if deadline == "" {
-			deadline = task.DeadlineID
-		}
 		if deadline == "" {
 			deadline = "-"
 		}
