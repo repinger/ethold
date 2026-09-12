@@ -164,6 +164,73 @@ func TestAuthManager_Relogin(t *testing.T) {
 	}
 }
 
+func TestAuthManager_Relogin_ConcurrentWithClientDo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login?service=test" method="post"><input type="hidden" name="lt" value="LT-1"/><input type="text" name="username"/><input type="password" name="password"/></form>`)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "ETHOL_SESS", Value: "sess", Path: "/"})
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"nomor":1,"nama":"Tester","nipnrp":"123"}`))
+		case "/api/test":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatalf("new http client: %v", err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if _, err := auth.Login(ctx); err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/api/test", nil)
+				if err != nil {
+					return
+				}
+				resp, err := client.Do(req)
+				if err == nil {
+					resp.Body.Close()
+				}
+			}
+		}
+	}()
+
+	for i := 0; i < 5; i++ {
+		if _, err := auth.Relogin(ctx); err != nil {
+			t.Fatalf("relogin iteration %d failed: %v", i, err)
+		}
+	}
+	cancel()
+	<-done
+}
+
 func BenchmarkExtractCASForm(b *testing.B) {
 	htmlData := `
 <!DOCTYPE html>

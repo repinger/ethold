@@ -4,7 +4,9 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -99,8 +101,44 @@ func randomBrowserProfile() browserProfile {
 	return browserProfiles[rand.IntN(len(browserProfiles))]
 }
 
+type syncCookieJar struct {
+	mu  sync.RWMutex
+	jar http.CookieJar
+}
+
+func newSyncCookieJar() (*syncCookieJar, error) {
+	inner, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, err
+	}
+	return &syncCookieJar{jar: inner}, nil
+}
+
+func (s *syncCookieJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	s.jar.SetCookies(u, cookies)
+}
+
+func (s *syncCookieJar) Cookies(u *url.URL) []*http.Cookie {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.jar.Cookies(u)
+}
+
+func (s *syncCookieJar) Reset() error {
+	newInner, err := cookiejar.New(nil)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.jar = newInner
+	s.mu.Unlock()
+	return nil
+}
+
 func NewHTTPClient() (*http.Client, error) {
-	jar, err := cookiejar.New(nil)
+	jar, err := newSyncCookieJar()
 	if err != nil {
 		return nil, err
 	}

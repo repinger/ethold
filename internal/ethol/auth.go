@@ -137,20 +137,31 @@ func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	return &user, nil
 }
 
+type cookieResetter interface {
+	Reset() error
+}
+
 // Relogin forces re-authentication with CAS SSO, resetting session cookies and user info.
 // ponytail: fresh memory cookiejar replaces active session. upgrade path: persist cookies to disk if daemon restarts need session reuse.
 func (a *AuthManager) Relogin(ctx context.Context) (*UserInfo, error) {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return nil, fmt.Errorf("reset cookie jar: %w", err)
-	}
-
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
 
 	a.mu.Lock()
-	if a.client != nil {
-		a.client.Jar = jar
+	if a.client != nil && a.client.Jar != nil {
+		if cr, ok := a.client.Jar.(cookieResetter); ok {
+			if err := cr.Reset(); err != nil {
+				a.mu.Unlock()
+				return nil, fmt.Errorf("reset cookie jar: %w", err)
+			}
+		} else {
+			jar, err := cookiejar.New(nil)
+			if err != nil {
+				a.mu.Unlock()
+				return nil, fmt.Errorf("reset cookie jar: %w", err)
+			}
+			a.client.Jar = jar
+		}
 	}
 	a.user = nil
 	a.lastLogin = time.Time{}
