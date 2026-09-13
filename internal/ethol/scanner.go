@@ -63,6 +63,8 @@ type Scanner struct {
 	lastRelogin    time.Time
 	lastRosterTime time.Time
 	lastRosterMsg  string
+	serverDown     atomic.Bool
+	authFailed     atomic.Bool
 }
 
 func NewScanner(
@@ -953,8 +955,12 @@ func (s *Scanner) Run(ctx context.Context) error {
 			attended, err := s.ScanCourses(ctx, plan.Courses)
 			if err != nil {
 				slog.Error("Scan cycle error", "error", err)
-			} else if attended > 0 {
-				slog.Info("Scan cycle completed", "attended", attended, "duration", time.Since(scanStart))
+				s.handleScanError(ctx, err)
+			} else {
+				s.handleScanSuccess(ctx)
+				if attended > 0 {
+					slog.Info("Scan cycle completed", "attended", attended, "duration", time.Since(scanStart))
+				}
 			}
 		}
 
@@ -972,3 +978,41 @@ func (s *Scanner) Run(ctx context.Context) error {
 		}
 	}
 }
+
+func (s *Scanner) handleScanError(ctx context.Context, err error) {
+	if s.notifier == nil || err == nil {
+		return
+	}
+	if isAuthFailure(err) {
+		if !s.authFailed.Swap(true) {
+			_ = s.notifier.NotifyAuthFailure(ctx, err)
+		}
+		return
+	}
+	if !s.serverDown.Swap(true) {
+		_ = s.notifier.NotifyServerError(ctx, err)
+	}
+}
+
+func (s *Scanner) handleScanSuccess(ctx context.Context) {
+	s.authFailed.Store(false)
+	if s.serverDown.Swap(false) && s.notifier != nil {
+		_ = s.notifier.NotifyServerRecovery(ctx)
+	}
+}
+
+func isAuthFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrUnauthorized) {
+		return true
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "401") ||
+		strings.Contains(errStr, "403") ||
+		strings.Contains(errStr, "unauthorized") ||
+		strings.Contains(errStr, "kredensial") ||
+		strings.Contains(errStr, "token validation failed")
+}
+

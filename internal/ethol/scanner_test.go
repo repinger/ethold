@@ -1324,3 +1324,196 @@ func TestScanner_Roster_Cache(t *testing.T) {
 		t.Errorf("expected identical cached reply, got %q vs %q", reply1, reply2)
 	}
 }
+
+func TestScanner_OutageNotification_ServerErrorAndRecovery(t *testing.T) {
+	var (
+		serverFail   atomic.Bool
+		sentMessages []string
+		sentMu       sync.Mutex
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/bottoken/sendMessage":
+			var payload tgSendMessagePayload
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			sentMu.Lock()
+			sentMessages = append(sentMessages, payload.Text)
+			sentMu.Unlock()
+			w.Write([]byte(`{"ok":true}`))
+			return
+
+		case "/api/auth/refresh":
+			if serverFail.Load() {
+				w.WriteHeader(http.StatusBadGateway)
+				w.Write([]byte("502 Bad Gateway"))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login" method="post"><input type="text" name="username"/><input type="password" name="password"/></form>`)
+				return
+			}
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+
+		case "/api/auth/validasi-token":
+			w.Write([]byte(`{"nomor":1001,"nama":"Budi","nipnrp":"3120600001"}`))
+
+		case "/api/kuliah":
+			if serverFail.Load() {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			json.NewEncoder(w).Encode([]map[string]any{})
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	if _, err := auth.Login(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	courses := NewCourseManager(client, server.URL, 10*time.Minute)
+	state, err := NewStateManager(filepath.Join(t.TempDir(), "keys.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	presence := NewPresenceEngine(client, server.URL)
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	scanner := NewScanner(auth, courses, presence, nil, state, notifier, 1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 1. Initial success - no alerts
+	scanner.handleScanSuccess(ctx)
+	sentMu.Lock()
+	if len(sentMessages) != 0 {
+		t.Fatalf("expected 0 messages on initial success, got %d", len(sentMessages))
+	}
+	sentMu.Unlock()
+
+	// 2. Server fails with 502
+	err502 := fmt.Errorf("refresh session failed: HTTP 502 (Bad Gateway)")
+	scanner.handleScanError(ctx, err502)
+
+	sentMu.Lock()
+	if len(sentMessages) != 1 {
+		t.Fatalf("expected 1 error alert, got %d", len(sentMessages))
+	}
+	if !strings.Contains(sentMessages[0], "GANGGUAN SERVER ETHOL") {
+		t.Errorf("expected GANGGUAN SERVER ETHOL in alert, got %s", sentMessages[0])
+	}
+	sentMu.Unlock()
+
+	// 3. Server continues failing - de-duplicate, no second alert
+	scanner.handleScanError(ctx, err502)
+	sentMu.Lock()
+	if len(sentMessages) != 1 {
+		t.Fatalf("expected still 1 alert (de-duplicated), got %d", len(sentMessages))
+	}
+	sentMu.Unlock()
+
+	// 4. Server recovers
+	scanner.handleScanSuccess(ctx)
+	sentMu.Lock()
+	if len(sentMessages) != 2 {
+		t.Fatalf("expected 2 messages (error + recovery), got %d", len(sentMessages))
+	}
+	if !strings.Contains(sentMessages[1], "LAYANAN ETHOL PULIH") {
+		t.Errorf("expected LAYANAN ETHOL PULIH in recovery, got %s", sentMessages[1])
+	}
+	sentMu.Unlock()
+
+	// 5. Success continues - no second recovery message
+	scanner.handleScanSuccess(ctx)
+	sentMu.Lock()
+	if len(sentMessages) != 2 {
+		t.Fatalf("expected still 2 messages, got %d", len(sentMessages))
+	}
+	sentMu.Unlock()
+}
+
+func TestScanner_OutageNotification_AuthFailure(t *testing.T) {
+	var (
+		sentMessages []string
+		sentMu       sync.Mutex
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/bottoken/sendMessage" {
+			var payload tgSendMessagePayload
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			sentMu.Lock()
+			sentMessages = append(sentMessages, payload.Text)
+			sentMu.Unlock()
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	courses := NewCourseManager(client, server.URL, 10*time.Minute)
+	state, err := NewStateManager(filepath.Join(t.TempDir(), "keys.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	presence := NewPresenceEngine(client, server.URL)
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	scanner := NewScanner(auth, courses, presence, nil, state, notifier, 1)
+
+	ctx := context.Background()
+
+	// 1. Auth error occurs
+	authErr := fmt.Errorf("ensure session: %w", ErrUnauthorized)
+	scanner.handleScanError(ctx, authErr)
+
+	sentMu.Lock()
+	if len(sentMessages) != 1 {
+		t.Fatalf("expected 1 auth failure alert, got %d", len(sentMessages))
+	}
+	if !strings.Contains(sentMessages[0], "GAGAL AUTENTIKASI") {
+		t.Errorf("expected GAGAL AUTENTIKASI in alert, got %s", sentMessages[0])
+	}
+	sentMu.Unlock()
+
+	// 2. Auth error repeats - suppressed
+	scanner.handleScanError(ctx, authErr)
+	sentMu.Lock()
+	if len(sentMessages) != 1 {
+		t.Fatalf("expected still 1 alert (de-duplicated), got %d", len(sentMessages))
+	}
+	sentMu.Unlock()
+
+	// 3. Successful scan resets auth failure state
+	scanner.handleScanSuccess(ctx)
+
+	// 4. Next auth error triggers alert again
+	scanner.handleScanError(ctx, authErr)
+	sentMu.Lock()
+	if len(sentMessages) != 2 {
+		t.Fatalf("expected 2 auth failure alerts after reset, got %d", len(sentMessages))
+	}
+	sentMu.Unlock()
+}
+

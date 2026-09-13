@@ -275,6 +275,68 @@ func (tn *TelegramNotifier) NotifyPresenceSuccess(ctx context.Context, mkName, d
 	return nil
 }
 
+func (tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) error {
+	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	msg := fmt.Sprintf(
+		"⚠️ <b>GANGGUAN SERVER ETHOL</b>\n\n"+
+			"🕒 <b>Waktu:</b> %s\n"+
+			"❌ <b>Kendala:</b> %s\n\n"+
+			"<i>Bot menunda pengecekan dan akan mencoba kembali secara otomatis.</i>",
+		waktuStr,
+		html.EscapeString(err.Error()),
+	)
+
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if sendErr := tn.SendMessage(c, msg); sendErr != nil {
+		slog.Error("Failed to send Telegram server error notification", "error", sendErr)
+		return sendErr
+	}
+	return nil
+}
+
+func (tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error {
+	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	msg := fmt.Sprintf(
+		"✅ <b>LAYANAN ETHOL PULIH</b>\n\n"+
+			"🕒 <b>Waktu:</b> %s\n"+
+			"ℹ️ Layanan ETHOL dan CAS SSO dapat diakses kembali secara normal.",
+		waktuStr,
+	)
+
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if sendErr := tn.SendMessage(c, msg); sendErr != nil {
+		slog.Error("Failed to send Telegram recovery notification", "error", sendErr)
+		return sendErr
+	}
+	return nil
+}
+
+func (tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) error {
+	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	msg := fmt.Sprintf(
+		"🚨 <b>GAGAL AUTENTIKASI</b>\n\n"+
+			"🕒 <b>Waktu:</b> %s\n"+
+			"❌ <b>Kendala:</b> %s\n\n"+
+			"<i>Sesi kedaluwarsa atau kredensial tidak valid. Silakan periksa kredensial di .env atau lakukan /relogin.</i>",
+		waktuStr,
+		html.EscapeString(err.Error()),
+	)
+
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if sendErr := tn.SendMessage(c, msg); sendErr != nil {
+		slog.Error("Failed to send Telegram auth failure notification", "error", sendErr)
+		return sendErr
+	}
+	return nil
+}
+
+
 type tgChat struct {
 	ID int64 `json:"id"`
 }

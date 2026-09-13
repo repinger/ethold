@@ -381,3 +381,94 @@ func TestTelegramNotifier_CommandTimeout(t *testing.T) {
 		t.Error("expected command context to have a deadline/timeout set")
 	}
 }
+
+func TestTelegramNotifier_NotifyServerError(t *testing.T) {
+	var sentPayload tgSendMessagePayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot123/sendMessage" {
+			_ = json.NewDecoder(r.Body).Decode(&sentPayload)
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "777")
+	err = tn.NotifyServerError(context.Background(), fmt.Errorf("502 Bad Gateway"))
+	if err != nil {
+		t.Fatalf("NotifyServerError failed: %v", err)
+	}
+
+	if !strings.Contains(sentPayload.Text, "GANGGUAN SERVER ETHOL") {
+		t.Errorf("expected server error title, got: %s", sentPayload.Text)
+	}
+	if !strings.Contains(sentPayload.Text, "502 Bad Gateway") {
+		t.Errorf("expected error message detail, got: %s", sentPayload.Text)
+	}
+}
+
+func TestTelegramNotifier_NotifyServerRecovery(t *testing.T) {
+	var sentPayload tgSendMessagePayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot123/sendMessage" {
+			_ = json.NewDecoder(r.Body).Decode(&sentPayload)
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "777")
+	err = tn.NotifyServerRecovery(context.Background())
+	if err != nil {
+		t.Fatalf("NotifyServerRecovery failed: %v", err)
+	}
+
+	if !strings.Contains(sentPayload.Text, "LAYANAN ETHOL PULIH") {
+		t.Errorf("expected server recovery title, got: %s", sentPayload.Text)
+	}
+}
+
+func TestTelegramNotifier_NotifyAuthFailure(t *testing.T) {
+	var sentPayload tgSendMessagePayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot123/sendMessage" {
+			_ = json.NewDecoder(r.Body).Decode(&sentPayload)
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "777")
+	err = tn.NotifyAuthFailure(context.Background(), fmt.Errorf("401 Unauthorized"))
+	if err != nil {
+		t.Fatalf("NotifyAuthFailure failed: %v", err)
+	}
+
+	if !strings.Contains(sentPayload.Text, "GAGAL AUTENTIKASI") {
+		t.Errorf("expected auth failure title, got: %s", sentPayload.Text)
+	}
+	if !strings.Contains(sentPayload.Text, "401 Unauthorized") {
+		t.Errorf("expected error message detail, got: %s", sentPayload.Text)
+	}
+}
+
