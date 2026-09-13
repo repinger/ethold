@@ -39,6 +39,7 @@ The table below lists all supported environment variables:
 > **Note:** Both `ETHOL_EMAIL` and `ETHOL_PASSWORD` are required (via flag, system env, or file).
 > If Telegram variables are empty, the application disables the Telegram integration.
 > If `ETHOL_AUTO_PRESENCE` is disabled or unset, the daemon runs in academic-only mode without scanning or submitting attendance.
+> `ETHOL_AUTO_PRESENCE` has **no corresponding CLI flag**; it can only be set via the `.env` file or a system environment variable.
 
 ## Example File
 
