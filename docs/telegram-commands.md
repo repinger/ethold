@@ -17,7 +17,7 @@ The command parser removes these suffixes before execution.
 
 #### `/ping`
 - **Description:** Checks if the service is online.
-- **Response:** `pong 🏓`
+- **Response:** `🏓 Pong!`
 
 #### `/help` or `/start`
 - **Description:** Returns the complete menu of available commands.
@@ -31,6 +31,15 @@ The command parser removes these suffixes before execution.
   - Last scan time and duration.
   - Paused state.
   - Go runtime memory usage and goroutine count.
+
+#### `/debug`
+- **Description:** Returns full runtime diagnostics for troubleshooting.
+- **Included Details:**
+  - Go version, OS, architecture, PID, CPU count, goroutine count.
+  - Memory statistics: heap allocation, GC cycle count.
+  - Daemon configuration: worker count, min/max delay and stagger ranges, current scan mode, last scan timestamp.
+  - Storage: state file path, recorded key count, course and academic cache entry counts.
+  - CAS session: authenticated user name and NRP.
 
 #### `/pause`
 - **Description:** Pauses automatic background attendance scanning (requires `ETHOL_AUTO_PRESENCE=true`).
@@ -80,3 +89,4 @@ The command parser removes these suffixes before execution.
 #### `/relogin`
 - **Description:** Forces a session re-authentication against the PENS CAS server.
 - **Response:** Confirms successful authentication or reports an error message.
+- **Note:** Enforces a 30-second cooldown between invocations to prevent rapid re-authentication loops.
