@@ -19,6 +19,7 @@ This document describes each module in the `internal/ethol` package.
 | `academic_materials.go` | Fetches lecture materials, video recordings, and formats material lists. |
 | `academic_attendance.go` | Computes attendance statistics, retrieves class rosters, and formats recap data. |
 | `academic_notif.go` | Polls ETHOL notifications, marks items as read, and handles alert dispatch. |
+| `debug.go` | Handles the `/debug` Telegram command, reporting runtime diagnostics. |
 | `state.go` | Persists attendance keys and records to disk atomically. |
 | `telegram.go` | Sends messages and polls updates using the Telegram Bot API. |
 
@@ -51,7 +52,7 @@ This file configures the underlying HTTP transport for all network communication
 - **Cookie Jar:** Uses `net/http/cookiejar` so that all requests share session cookies.
 - **Browser Profile:** Selects a realistic browser header profile on startup (Chrome, Firefox, Safari, or Edge).
 - **Header Injection:** Wraps transport with `headerTransport` to add `User-Agent`, `Accept-Language`, and `Sec-CH-UA` headers to target hosts.
-- **Connection Pooling:** Configures a pool of 20 idle connections with a 15-second total timeout.
+- **Connection Pooling:** Configures up to 64 idle connections (32 per host), 90-second idle timeout, 15-second total request timeout.
 
 ### Primary Functions
 
@@ -75,6 +76,7 @@ This file manages the CAS login lifecycle.
 
 - `NewAuthManager(client, baseURL, username, password) *AuthManager`: Constructs a new manager.
 - `(a *AuthManager) Login(ctx context.Context) (*UserInfo, error)`: Performs the 4-step CAS login flow.
+- `(a *AuthManager) Relogin(ctx context.Context) (*UserInfo, error)`: Resets the cookie jar and performs a full login; used by `/relogin`.
 - `(a *AuthManager) EnsureSession(ctx context.Context) error`: Refreshes session via `/api/auth/refresh` or triggers a new login.
 - `(a *AuthManager) User() *UserInfo`: Returns the current user profile in a thread-safe manner.
 
@@ -98,8 +100,12 @@ This file fetches enrolled courses and caches the results in memory.
 
 - `NewCourseManager(client, baseURL, ttl) *CourseManager`: Creates the manager with the specified cache TTL.
 - `(cm *CourseManager) GetCourses(ctx) ([]Course, error)`: Returns cached courses if fresh, or refreshes from API.
-- `(cm *CourseManager) ActivePeriod(ctx) (year, semester int, error)`: Queries `/api/auth/config` for active term values.
 - `(cm *CourseManager) Refresh(ctx) ([]Course, error)`: Forces an update from `/api/kuliah`.
+- `(cm *CourseManager) ActivePeriod(ctx) (year, semester int, error)`: Queries `/api/auth/config` for active term values.
+- `(cm *CourseManager) CachedCourses() []Course`: Returns the current in-memory course list without a network call.
+- `(cm *CourseManager) CachedCount() int`: Returns the number of cached courses.
+- `(cm *CourseManager) CachedActivePeriod() (year, semester int, ok bool)`: Returns cached year/semester without a network call.
+- `(cm *CourseManager) CacheAge() (time.Duration, bool)`: Returns how long ago the cache was last populated.
 
 ---
 
@@ -153,6 +159,10 @@ This file orchestrates scanning operations, concurrency, and Telegram commands.
 - `NewScanner(auth, courses, presence, academic, state, notifier, concurrency) *Scanner`: Constructs a new scanner.
 - `(s *Scanner) Run(ctx context.Context) error`: Executes the continuous loop until the context cancels.
 - `(s *Scanner) ScanOnce(ctx context.Context) (int, error)`: Runs a single scan pass across all courses.
+- `(s *Scanner) TryScanOnce(ctx context.Context) (int, bool, error)`: Non-blocking variant; returns `false` if a scan is already in progress.
+- `(s *Scanner) ScanCourses(ctx context.Context, courses []Course) (int, error)`: Scans a specific subset of courses.
+- `(s *Scanner) TryScanCourses(ctx context.Context, courses []Course) (int, bool, error)`: Non-blocking variant of `ScanCourses`.
+- `(s *Scanner) Status() ScannerStatus`: Returns a snapshot of current operational metrics.
 - `(s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string`: Routes and executes Telegram bot commands.
 
 ---
@@ -183,13 +193,15 @@ The academic module queries academic information including timetables, assignmen
 - `NewAcademicManager(client, baseURL, cacheTTL) *AcademicManager`: Creates a new academic manager with shared caching.
 - `(am *AcademicManager) GetSchedule(ctx, year, semester)`: Queries class schedules (`academic_schedule.go`).
 - `(am *AcademicManager) GetActiveCourse(ctx, now, year, semester, courses)`: Determines the current course based on timetable (`academic_schedule.go`).
+- `(am *AcademicManager) CachedActiveCourse(now, year, semester, courses)`: Non-network variant using the cached schedule only.
 - `(am *AcademicManager) GetPendingTasks(ctx, courses)`: Fetches open assignments (`academic_tasks.go`).
 - `(am *AcademicManager) GetCourseMaterials(ctx, courses)`: Fetches uploaded materials (`academic_materials.go`).
 - `(am *AcademicManager) GetCourseVideos(ctx, courses)`: Fetches recorded videos (`academic_materials.go`).
 - `(am *AcademicManager) FormatAttendanceStatsText(ctx, now, year, semester, studentID, courses)`: Computes and formats attendance statistics (`academic_attendance.go`).
 - `(am *AcademicManager) GetAttendanceRoster(ctx, course, key)`: Fetches attendees for a session (`academic_attendance.go`).
 - `(am *AcademicManager) StartNotificationPoller(ctx, interval, authFn, onPres, onTask)`: Periodically polls ETHOL notifications (`academic_notif.go`).
-- `(am *AcademicManager) InvalidateAllCaches()`: Clears all cached academic data (`academic.go`).
+- `(am *AcademicManager) InvalidateAttendanceCache()`: Clears the attendance stats cache; called after a successful presence submission (`academic.go`).
+- `(am *AcademicManager) CacheStats() AcademicCacheStats`: Returns entry counts for all in-memory caches (`academic.go`).
 
 ---
 
@@ -215,7 +227,22 @@ This file manages disk persistence for recorded attendance keys.
 
 ---
 
-## 10. Telegram Notifier (`telegram.go`)
+## 10. Debug (`debug.go`)
+
+This file handles the `/debug` Telegram command.
+
+### Primary Functions
+
+- `handleDebug(s *Scanner) string`: Formats a full diagnostic report including:
+  - Go runtime version, OS, architecture, PID, CPU count, goroutine count.
+  - Memory statistics: `Alloc`, `TotalAlloc`, `Sys`, `HeapInuse`, `HeapObjects`, GC cycles.
+  - Daemon state: uptime, concurrency, min/max delay and stagger ranges, scan mode, last scan time.
+  - Storage: state file path, recorded key count, course cache stats, academic cache stats.
+  - CAS session: currently authenticated user info.
+
+---
+
+## 11. Telegram Notifier (`telegram.go`)
 
 This file interfaces with the Telegram Bot API.
 
@@ -228,4 +255,4 @@ This file interfaces with the Telegram Bot API.
 - `NewTelegramNotifier(client, baseURL, token, chatID) *TelegramNotifier`: Creates the notifier.
 - `(tn *TelegramNotifier) SendMessage(ctx, text string) error`: Sends an HTML formatted message.
 - `(tn *TelegramNotifier) NotifyPresenceSuccess(ctx, course, lecturer, key, msg) error`: Sends formatted attendance alerts.
-- `(tn *TelegramNotifier) StartCommandPoller(ctx, handler) error`: Runs an update polling loop.
+- `(tn *TelegramNotifier) StartCommandPoller(ctx, handler)`: Runs an update polling loop.
