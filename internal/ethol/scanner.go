@@ -248,34 +248,34 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return "🤖 <b>ETHOL Bot (Info Akademik)</b>\n\n" +
 				"Perintah yang tersedia:\n" +
 				"• /status - Status daemon dan sistem\n" +
-				"• /debug - Diagnostik sistem dan informasi debug mendalam\n" +
-				"• /courses - Daftar mata kuliah yang dipantau\n" +
-				"• /jadwal - Jadwal perkuliahan hari ini & pekan ini\n" +
+				"• /debug - Diagnostik sistem dan informasi debug\n" +
+				"• /courses - Daftar mata kuliah yang terdaftar\n" +
+				"• /jadwal - Jadwal perkuliahan hari ini & minggu ini\n" +
 				"• /tugas - Daftar tugas perkuliahan aktif\n" +
-				"• /materi - Materi & video perkuliahan\n" +
+				"• /materi - Materi & dokumen perkuliahan\n" +
 				"• /presensi_kelas - Daftar kehadiran sesi presensi aktif\n" +
 				"• /rekap - Rekap kehadiran semester aktif\n" +
-				"• /whoami - Informasi akun ETHOL terhubung\n" +
-				"• /relogin - Paksa perbarui sesi login CAS\n" +
+				"• /whoami - Informasi akun ETHOL yang terhubung\n" +
+				"• /relogin - Perbarui sesi login CAS\n" +
 				"• /ping - Cek koneksi bot\n" +
 				"• /help - Tampilkan pesan bantuan"
 		}
 		return "🤖 <b>Ethold Bot</b>\n\n" +
 			"Perintah yang tersedia:\n" +
 			"• /status - Status daemon dan scanner\n" +
-			"• /debug - Diagnostik sistem dan informasi debug mendalam\n" +
-			"• /check - Jalankan pemindaian presensi sekarang\n" +
-			"• /courses - Daftar mata kuliah yang dipantau\n" +
-			"• /jadwal - Jadwal perkuliahan hari ini & pekan ini\n" +
+			"• /debug - Diagnostik sistem dan informasi debug\n" +
+			"• /check - Jalankan scanning presensi sekarang\n" +
+			"• /courses - Daftar mata kuliah yang terdaftar\n" +
+			"• /jadwal - Jadwal perkuliahan hari ini & minggu ini\n" +
 			"• /tugas - Daftar tugas perkuliahan aktif\n" +
-			"• /materi - Materi & video perkuliahan\n" +
+			"• /materi - Materi & dokumen perkuliahan\n" +
 			"• /presensi_kelas - Daftar kehadiran sesi presensi aktif\n" +
 			"• /rekap - Rekap kehadiran semester aktif\n" +
-			"• /whoami - Informasi akun ETHOL terhubung\n" +
+			"• /whoami - Informasi akun ETHOL yang terhubung\n" +
 			"• /today - Presensi yang tercatat hari ini\n" +
-			"• /relogin - Paksa perbarui sesi login CAS\n" +
-			"• /pause - Jeda pemindaian otomatis\n" +
-			"• /resume - Lanjutkan pemindaian otomatis\n" +
+			"• /relogin - Perbarui sesi login CAS\n" +
+			"• /pause - Pause scanning otomatis\n" +
+			"• /resume - Lanjutkan scanning otomatis\n" +
 			"• /ping - Cek koneksi bot\n" +
 			"• /help - Tampilkan pesan bantuan"
 
@@ -356,14 +356,14 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
 		}
 		s.paused.Store(true)
-		return "⏸️ <b>Pemindaian Otomatis Dijeda</b>\nBot tidak akan memindai secara otomatis. Ketik /resume untuk mengaktifkan kembali."
+		return "⏸️ <b>Scanning Otomatis Dijeda</b>\nBot tidak akan melakukan scanning secara otomatis. Ketik /resume untuk mengaktifkan kembali."
 
 	case "/resume":
 		if s.presence == nil {
 			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
 		}
 		s.paused.Store(false)
-		return "▶️ <b>Pemindaian Otomatis Dilanjutkan</b>\nBot akan kembali memindai sesuai jadwal."
+		return "▶️ <b>Scanning Otomatis Dilanjutkan</b>\nBot akan kembali melakukan scanning sesuai jadwal."
 
 	case "/whoami":
 		user := s.auth.User()

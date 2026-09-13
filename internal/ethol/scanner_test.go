@@ -234,7 +234,7 @@ func TestScanner_HandleTelegramCommand(t *testing.T) {
 
 	// 4. /pause and /resume
 	reply = scanner.HandleTelegramCommand(ctx, "/pause")
-	if !strings.Contains(reply, "Pemindaian Otomatis Dijeda") {
+	if !strings.Contains(reply, "Scanning Otomatis Dijeda") {
 		t.Errorf("expected pause message, got %q", reply)
 	}
 	if !scanner.Status().Paused {
@@ -247,7 +247,7 @@ func TestScanner_HandleTelegramCommand(t *testing.T) {
 	}
 
 	reply = scanner.HandleTelegramCommand(ctx, "/resume")
-	if !strings.Contains(reply, "Pemindaian Otomatis Dilanjutkan") {
+	if !strings.Contains(reply, "Scanning Otomatis Dilanjutkan") {
 		t.Errorf("expected resume message, got %q", reply)
 	}
 	if scanner.Status().Paused {
