@@ -75,6 +75,10 @@ func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("cas redirect failed: HTTP %d (%s)", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+
 	// 2. Stream-parse CAS form id="fm1"
 	actionRel, formValues, err := extractCASForm(resp.Body)
 	if err != nil {
@@ -103,8 +107,12 @@ func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("post cas credentials: %w", err)
 	}
+	defer postResp.Body.Close()
 	_, _ = io.Copy(io.Discard, postResp.Body)
-	postResp.Body.Close()
+
+	if postResp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("cas submit failed: HTTP %d (%s)", postResp.StatusCode, http.StatusText(postResp.StatusCode))
+	}
 
 	// 4. Validate token
 	valURL := a.baseURL + "/api/auth/validasi-token"
@@ -191,21 +199,29 @@ func (a *AuthManager) EnsureSession(ctx context.Context) error {
 
 	refreshURL := a.baseURL + "/api/auth/refresh"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, refreshURL, nil)
-	if err == nil {
-		resp, doErr := a.client.Do(req)
-		if doErr == nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				a.mu.Lock()
-				a.lastLogin = time.Now()
-				a.mu.Unlock()
-				return nil
-			}
-		}
+	if err != nil {
+		return fmt.Errorf("create refresh req: %w", err)
 	}
 
-	// Token refresh failed or returned non-200, perform full login
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("refresh session: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode == http.StatusOK {
+		a.mu.Lock()
+		a.lastLogin = time.Now()
+		a.mu.Unlock()
+		return nil
+	}
+
+	if resp.StatusCode >= http.StatusInternalServerError {
+		return fmt.Errorf("refresh session failed: HTTP %d (%s)", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+
+	// 4xx: session expired or invalid, re-authenticate via full login
 	_, err = a.loginLocked(ctx)
 	return err
 }

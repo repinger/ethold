@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCASAuthFlow(t *testing.T) {
@@ -229,6 +230,198 @@ func TestAuthManager_Relogin_ConcurrentWithClientDo(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+func TestAuthManager_Login_ServiceDown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/auth/cas-redirect" {
+			w.WriteHeader(http.StatusBadGateway)
+			w.Write([]byte("<html><body>502 Bad Gateway</body></html>"))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatalf("new http client: %v", err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	_, err = auth.Login(context.Background())
+	if err == nil {
+		t.Fatal("expected error on 502 Bad Gateway, got nil")
+	}
+	if strings.Contains(err.Error(), "CAS form fm1 not found") {
+		t.Errorf("expected fast-fail HTTP status error, got masked HTML parse error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "502") {
+		t.Errorf("expected error to mention 502, got: %v", err)
+	}
+}
+
+func TestAuthManager_Login_CASServerError(t *testing.T) {
+	var tokenValidateCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login?service=test" method="post"><input type="hidden" name="lt" value="LT-1"/><input type="text" name="username"/><input type="password" name="password"/></form>`)
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("CAS Internal Server Error"))
+		case "/api/auth/validasi-token":
+			tokenValidateCalled = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatalf("new http client: %v", err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	_, err = auth.Login(context.Background())
+	if err == nil {
+		t.Fatal("expected error on CAS 500, got nil")
+	}
+	if tokenValidateCalled {
+		t.Error("expected token validation to be skipped when CAS POST returns 500")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("expected error to mention 500, got: %v", err)
+	}
+}
+
+func TestAuthManager_EnsureSession_ServiceDownDoesNotFullLogin(t *testing.T) {
+	var (
+		fullLoginCount int
+		refreshCount   int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			fullLoginCount++
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login?service=test" method="post"><input type="hidden" name="lt" value="LT-1"/><input type="text" name="username"/><input type="password" name="password"/></form>`)
+				return
+			}
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"nomor":1,"nama":"Tester","nipnrp":"123"}`))
+		case "/api/auth/refresh":
+			refreshCount++
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("503 Service Unavailable"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatalf("new http client: %v", err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	ctx := context.Background()
+
+	// Initial login
+	if _, err := auth.Login(ctx); err != nil {
+		t.Fatalf("initial login failed: %v", err)
+	}
+	if fullLoginCount != 1 {
+		t.Fatalf("expected 1 initial full login, got %d", fullLoginCount)
+	}
+
+	// Force EnsureSession to run refresh
+	auth.mu.Lock()
+	auth.lastLogin = time.Now().Add(-1 * time.Hour)
+	auth.mu.Unlock()
+
+	err = auth.EnsureSession(ctx)
+	if err == nil {
+		t.Fatal("expected error when refresh returns 503, got nil")
+	}
+	if fullLoginCount != 1 {
+		t.Errorf("expected full login NOT to be called on 503 refresh failure, got fullLoginCount=%d", fullLoginCount)
+	}
+}
+
+func TestAuthManager_EnsureSession_401TriggersFullLogin(t *testing.T) {
+	var (
+		fullLoginCount int
+		refreshCount   int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			fullLoginCount++
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login?service=test" method="post"><input type="hidden" name="lt" value="LT-1"/><input type="text" name="username"/><input type="password" name="password"/></form>`)
+				return
+			}
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"nomor":1,"nama":"Tester","nipnrp":"123"}`))
+		case "/api/auth/refresh":
+			refreshCount++
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatalf("new http client: %v", err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	ctx := context.Background()
+
+	// Initial login
+	if _, err := auth.Login(ctx); err != nil {
+		t.Fatalf("initial login failed: %v", err)
+	}
+	if fullLoginCount != 1 {
+		t.Fatalf("expected 1 initial full login, got %d", fullLoginCount)
+	}
+
+	// Expire lastLogin to force check
+	auth.mu.Lock()
+	auth.lastLogin = time.Now().Add(-1 * time.Hour)
+	auth.mu.Unlock()
+
+	// 401 should trigger full login
+	err = auth.EnsureSession(ctx)
+	if err != nil {
+		t.Fatalf("expected EnsureSession to succeed via full login on 401, got: %v", err)
+	}
+	if fullLoginCount != 2 {
+		t.Errorf("expected 2 full logins (initial + after 401), got %d", fullLoginCount)
+	}
 }
 
 func BenchmarkExtractCASForm(b *testing.B) {
