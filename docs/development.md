@@ -27,6 +27,7 @@ You must install these tools on your development computer:
 │       ├── client.go
 │       ├── config.go
 │       ├── courses.go
+│       ├── debug.go
 │       ├── presence.go
 │       ├── scanner.go
 │       ├── scheduler.go
@@ -98,4 +99,4 @@ Adhere to these rules when making changes:
 - Minimize external dependencies. Use the Go standard library first.
 - Write tests beside each source file using the `_test.go` naming convention.
 - Use `t.TempDir()` to create isolated directories for state tests.
-- Format commit messages using Conventional Commits (`type(scope): message`).
+- Format commit messages as `subsystem: imperative summary` (max 75 chars). Examples: `scanner: fix race on pause flag`, `docs: update api-reference`. This is **not** Conventional Commits format — no parenthesized scopes, no `feat:`/`fix:` prefixes.
