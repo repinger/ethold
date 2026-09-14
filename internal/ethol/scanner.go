@@ -88,8 +88,8 @@ func NewScanner(
 		notifier:   notifier,
 		concurr:    concurrency,
 		startTime:  time.Now(),
-		minDelay:   10 * time.Second,
-		maxDelay:   30 * time.Second,
+		minDelay:   1 * time.Second,
+		maxDelay:   10 * time.Second,
 		minStagger: 50 * time.Millisecond,
 		maxStagger: 250 * time.Millisecond,
 	}
