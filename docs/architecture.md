@@ -86,7 +86,7 @@ A normal scan cycle follows these steps:
 4. **Inspect Courses:** Workers check each course for an open attendance session.
    Workers add a small pause between checks to avoid rate limits.
 5. **Submit Presence:** When a worker finds an open session with a new key:
-   - The worker waits for a random delay between 10 and 30 seconds.
+   - The worker waits for a random delay between 2 and 10 seconds.
    - The worker sends the attendance request to the ETHOL API.
    - The worker saves the key in `StateManager`.
    - The worker sends a notification message through Telegram.

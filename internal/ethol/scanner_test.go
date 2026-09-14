@@ -628,10 +628,10 @@ func TestScanner_PresenceDelay(t *testing.T) {
 
 	scanner := NewScanner(auth, courses, presence, nil, state, notifier, 1)
 
-	// Verify default delay is 10s to 30s
+	// Verify default delay is 2s to 10s
 	minD, maxD := scanner.PresenceDelay()
-	if minD != 10*time.Second || maxD != 30*time.Second {
-		t.Errorf("expected default delay 10s-30s, got %v-%v", minD, maxD)
+	if minD != 2*time.Second || maxD != 10*time.Second {
+		t.Errorf("expected default delay 2s-10s, got %v-%v", minD, maxD)
 	}
 
 	// 1. Verify delay executes within [min, max] range
