@@ -92,7 +92,9 @@ func run() error {
 		go academic.StartNotificationPoller(ctx, 30*time.Second, auth.EnsureSession, func(ket string) {
 			if cfg.AutoPresence {
 				_ = notifier.SendMessage(ctx, fmt.Sprintf("🔔 <b>NOTIFIKASI ETHOL:</b>\n%s\n\n<i>Memicu auto-presensi seketika...</i>", html.EscapeString(ket)))
-				_, _ = scanner.ScanOnce(ctx)
+				go func() {
+					_, _, _ = scanner.TryScanOnce(ctx)
+				}()
 			} else {
 				_ = notifier.SendMessage(ctx, fmt.Sprintf("🔔 <b>NOTIFIKASI ETHOL:</b>\n%s", html.EscapeString(ket)))
 			}

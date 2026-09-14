@@ -439,7 +439,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 				continue
 			}
 		}
-		cmdCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+		cmdCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		reply := handler(cmdCtx, cmd)
 		cancel()
 		if reply != "" {

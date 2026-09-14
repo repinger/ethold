@@ -168,10 +168,13 @@ func (am *AcademicManager) StartNotificationPoller(
 	}
 
 	poll := func() {
-		err := am.PollNotifications(ctx, onPresenceNotif, onTaskNotif)
+		pollCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		defer cancel()
+
+		err := am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif)
 		if errors.Is(err, ErrUnauthorized) && ensureAuth != nil {
-			if reErr := ensureAuth(ctx); reErr == nil {
-				err = am.PollNotifications(ctx, onPresenceNotif, onTaskNotif)
+			if reErr := ensureAuth(pollCtx); reErr == nil {
+				err = am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif)
 			} else {
 				err = reErr
 			}

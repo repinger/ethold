@@ -2,6 +2,7 @@ package ethol
 
 import (
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -144,6 +145,12 @@ func NewHTTPClient() (*http.Client, error) {
 	}
 
 	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:   true,
 		MaxIdleConns:        64,
 		MaxIdleConnsPerHost: 32,
 		IdleConnTimeout:     90 * time.Second,
@@ -153,6 +160,6 @@ func NewHTTPClient() (*http.Client, error) {
 	return &http.Client{
 		Jar:       jar,
 		Transport: &headerTransport{base: transport, profile: randomBrowserProfile()},
-		Timeout:   15 * time.Second,
+		Timeout:   30 * time.Second,
 	}, nil
 }
