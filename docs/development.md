@@ -28,6 +28,8 @@ You must install these tools on your development computer:
 │       ├── config.go
 │       ├── courses.go
 │       ├── debug.go
+│       ├── dev_log.go        # Debug tracing (build tag: dev)
+│       ├── dev_log_release.go# No-op tracing (build tag: !dev)
 │       ├── presence.go
 │       ├── scanner.go
 │       ├── scheduler.go
@@ -44,6 +46,11 @@ You must install these tools on your development computer:
 Compile the executable into the current directory:
 ```bash
 go build -o ethold ./cmd/ethold
+```
+
+Compile with development tracing enabled (forces debug log level, traces HTTP requests and Telegram commands):
+```bash
+go build -tags dev -o ethold ./cmd/ethold
 ```
 
 Run static analysis checks:
