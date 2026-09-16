@@ -39,15 +39,25 @@ jobs:
           check-latest: true
 
       - name: Run tests
-        run: go test -v ./...
+        run: |
+          go test -v ./...
+          go test -tags dev -v ./...
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.2
 
+      - name: Run golangci-lint (dev)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2
+          args: --build-tags dev
+
       - name: Build binary check
-        run: go build -v ./cmd/ethold
+        run: |
+          go build -v ./cmd/ethold
+          go build -tags dev -v ./cmd/ethold
 
   docker:
     name: Build & Push Dev Container
@@ -96,5 +106,7 @@ jobs:
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_TAGS=dev
           cache-from: type=gha
           cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max' || '' }}
