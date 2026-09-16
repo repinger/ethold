@@ -107,3 +107,4 @@ Adhere to these rules when making changes:
 - Write tests beside each source file using the `_test.go` naming convention.
 - Use `t.TempDir()` to create isolated directories for state tests.
 - Format commit messages as `subsystem: imperative summary` (max 75 chars). Examples: `scanner: fix race on pause flag`, `docs: update api-reference`. This is **not** Conventional Commits format — no parenthesized scopes, no `feat:`/`fix:` prefixes.
+- Keep commits small and bisectable. Each commit must be a single logical unit that compiles and passes tests independently; split refactors, features, and fixes across separate commits.
