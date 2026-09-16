@@ -73,6 +73,7 @@ You can control the application using command line flags:
 | `--once`             | `false`              | Run a single scan pass and exit immediately.                          |
 | `--concurrency`      | `4`                  | Number of worker goroutines for course checks.                        |
 | `--verbose`          | `false`              | Show debug log messages in the console.                               |
+| `--version`          | `false`              | Print program version and exit.                                       |
 
 ### Example Flag Commands
 
