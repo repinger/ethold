@@ -112,22 +112,6 @@ Pre-built multi-architecture (`linux/amd64`, `linux/arm64`) container images are
 
 ### Container Images
 
-Pull from GitHub Container Registry (GHCR):
-
-```bash
-docker pull ghcr.io/repinger/ethold:latest
-# or dev build from main branch
-docker pull ghcr.io/repinger/ethold:dev
-```
-
-Pull from DockerHub:
-
-```bash
-docker pull repinger/ethold:latest
-# or dev build from main branch
-docker pull repinger/ethold:dev
-```
-
 Run directly with Docker:
 
 ```bash
