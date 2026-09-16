@@ -36,6 +36,7 @@ This file parses configuration key-value pairs from files.
   - `Password string`
   - `TelegramToken string`
   - `TelegramChatID string`
+  - `AutoPresence bool`
 
 ### Primary Functions
 
@@ -52,7 +53,7 @@ This file configures the underlying HTTP transport for all network communication
 - **Cookie Jar:** Uses `net/http/cookiejar` so that all requests share session cookies.
 - **Browser Profile:** Selects a realistic browser header profile on startup (Chrome, Firefox, Safari, or Edge).
 - **Header Injection:** Wraps transport with `headerTransport` to add `User-Agent`, `Accept-Language`, and `Sec-CH-UA` headers to target hosts.
-- **Connection Pooling:** Configures up to 64 idle connections (32 per host), 90-second idle timeout, 15-second total request timeout.
+- **Connection Pooling:** Configures up to 64 idle connections (32 per host), 90-second idle timeout, 30-second total request timeout.
 
 ### Primary Functions
 
@@ -199,6 +200,10 @@ The academic module queries academic information including timetables, assignmen
 - `(am *AcademicManager) GetCourseVideos(ctx, courses)`: Fetches recorded videos (`academic_materials.go`).
 - `(am *AcademicManager) FormatAttendanceStatsText(ctx, now, year, semester, studentID, courses)`: Computes and formats attendance statistics (`academic_attendance.go`).
 - `(am *AcademicManager) GetAttendanceRoster(ctx, course, key)`: Fetches attendees for a session (`academic_attendance.go`).
+- `FormatRosterText(course, key, attendees, totalEnrolled)`: Standalone formatter for session attendee roster (`academic_attendance.go`).
+- `(am *AcademicManager) FormatScheduleText(ctx, now, year, semester)`: Formats full schedule message (`academic_schedule.go`).
+- `(am *AcademicManager) FormatTasksText(ctx, courses)`: Formats pending assignments message (`academic_tasks.go`).
+- `(am *AcademicManager) FormatMaterialsText(ctx, courses)`: Formats materials and recorded video links (`academic_materials.go`).
 - `(am *AcademicManager) StartNotificationPoller(ctx, interval, authFn, onPres, onTask)`: Periodically polls ETHOL notifications (`academic_notif.go`).
 - `(am *AcademicManager) InvalidateAttendanceCache()`: Clears the attendance stats cache; called after a successful presence submission (`academic.go`).
 - `(am *AcademicManager) CacheStats() AcademicCacheStats`: Returns entry counts for all in-memory caches (`academic.go`).
@@ -221,7 +226,10 @@ This file manages disk persistence for recorded attendance keys.
 ### Primary Functions
 
 - `NewStateManager(path string) (*StateManager, error)`: Loads existing state and verifies file permissions.
+- `(sm *StateManager) Path() string`: Returns the configured state file path.
 - `(sm *StateManager) Has(key string) bool`: Checks if a key was already recorded.
+- `(sm *StateManager) Count() int`: Returns total count of recorded presence keys.
+- `(sm *StateManager) CountWithPrefix(prefix string) int`: Returns count of keys matching date prefix.
 - `(sm *StateManager) AddRecord(records ...PresenceRecord) error`: Adds records and writes atomically to disk.
 - `(sm *StateManager) RecordsWithPrefix(prefix string) []PresenceRecord`: Returns records matching a date prefix.
 
@@ -233,7 +241,7 @@ This file handles the `/debug` Telegram command.
 
 ### Primary Functions
 
-- `handleDebug(s *Scanner) string`: Formats a full diagnostic report including:
+- `(s *Scanner) handleDebug(ctx context.Context) string`: Formats a full diagnostic report including:
   - Go runtime version, OS, architecture, PID, CPU count, goroutine count.
   - Memory statistics: `Alloc`, `TotalAlloc`, `Sys`, `HeapInuse`, `HeapObjects`, GC cycles.
   - Daemon state: uptime, concurrency, min/max delay and stagger ranges, scan mode, last scan time.
@@ -255,4 +263,8 @@ This file interfaces with the Telegram Bot API.
 - `NewTelegramNotifier(client, baseURL, token, chatID) *TelegramNotifier`: Creates the notifier.
 - `(tn *TelegramNotifier) SendMessage(ctx, text string) error`: Sends an HTML formatted message.
 - `(tn *TelegramNotifier) NotifyPresenceSuccess(ctx, course, lecturer, key, msg) error`: Sends formatted attendance alerts.
+- `(tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) error`: Sends server outage notification.
+- `(tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error`: Sends server recovery notification.
+- `(tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) error`: Sends authentication failure alert.
+- `(tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler func(ctx context.Context, cmd string) string) (int64, error)`: Fetches single update batch from Telegram API.
 - `(tn *TelegramNotifier) StartCommandPoller(ctx, handler)`: Runs an update polling loop.
