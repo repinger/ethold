@@ -8,6 +8,7 @@ The bot only processes commands sent from the configured `TELEGRAM_CHAT_ID`.
 The bot ignores messages from unauthorized users.
 Commands can include bot mention suffixes (for example, `/status@my_bot`).
 The command parser removes these suffixes before execution.
+Outgoing messages are rate-limited via a token bucket (burst: 3, refill: 1 message/second) and automatically split across multiple messages if exceeding 4,000 characters.
 
 ---
 
@@ -73,7 +74,8 @@ The command parser removes these suffixes before execution.
 - **Description:** Lists uploaded lecture materials and recorded video links.
 
 #### `/presensi_kelas`
-- **Description:** Shows the student attendee list and attendance count for the currently active class session.
+- **Description:** Shows the student attendee list and attendance count for the currently active class session (requires `ETHOL_AUTO_PRESENCE=true`).
+- **Note:** Responses are cached for 20 seconds to prevent hammering the ETHOL roster API.
 
 #### `/rekap`
 - **Description:** Displays overall attendance percentages and a course-by-course breakdown for the semester.
@@ -85,6 +87,7 @@ The command parser removes these suffixes before execution.
 #### `/check`
 - **Description:** Manually triggers an immediate scan of all courses for active presence sessions (requires `ETHOL_AUTO_PRESENCE=true`).
 - **Response:** Reports whether any open attendance sessions were found or submitted.
+- **Note:** Enforces a 15-second cooldown between scan invocations.
 
 #### `/relogin`
 - **Description:** Forces a session re-authentication against the PENS CAS server.
