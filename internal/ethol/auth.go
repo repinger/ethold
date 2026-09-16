@@ -78,12 +78,14 @@ func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("cas redirect failed: HTTP %d (%s)", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
+	devLog("CAS redirect success", "url", resp.Request.URL.String())
 
 	// 2. Stream-parse CAS form id="fm1"
 	actionRel, formValues, err := extractCASForm(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("parse cas login form: %w", err)
 	}
+	devLog("CAS form parsed", "action", actionRel, "field_count", len(formValues))
 
 	postURL, err := resp.Request.URL.Parse(actionRel)
 	if err != nil {
@@ -113,6 +115,7 @@ func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	if postResp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("cas submit failed: HTTP %d (%s)", postResp.StatusCode, http.StatusText(postResp.StatusCode))
 	}
+	devLog("CAS credentials submitted", "status", postResp.StatusCode)
 
 	// 4. Validate token
 	valURL := a.baseURL + "/api/auth/validasi-token"
@@ -135,6 +138,7 @@ func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	if err := json.NewDecoder(valResp.Body).Decode(&user); err != nil {
 		return nil, fmt.Errorf("decode user info: %w", err)
 	}
+	devLog("CAS token validated", "nrp", user.NipNrp, "nama", user.Nama)
 
 	a.mu.Lock()
 	a.user = &user
@@ -211,11 +215,13 @@ func (a *AuthManager) EnsureSession(ctx context.Context) error {
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode == http.StatusOK {
+		devLog("Session refresh success", "status", resp.StatusCode)
 		a.mu.Lock()
 		a.lastLogin = time.Now()
 		a.mu.Unlock()
 		return nil
 	}
+	devLog("Session refresh returned non-200", "status", resp.StatusCode)
 
 	if resp.StatusCode >= http.StatusInternalServerError {
 		return fmt.Errorf("refresh session failed: HTTP %d (%s)", resp.StatusCode, http.StatusText(resp.StatusCode))

@@ -53,6 +53,7 @@ func (pe *PresenceEngine) CheckCourse(ctx context.Context, c Course) (string, bo
 	}
 
 	key := extractPresenceKey(raw)
+	devLog("Presence checked", "course", c.CourseName(), "raw_len", len(raw), "key_found", key != "", "key", key)
 	if key != "" {
 		return key, true, nil
 	}
@@ -88,6 +89,7 @@ func (pe *PresenceEngine) Submit(ctx context.Context, c Course, key string, stud
 	if err != nil {
 		return "", false, fmt.Errorf("marshal presence payload: %w", err)
 	}
+	devLog("Submitting presence payload", "course", c.CourseName(), "key", key, "student_id", studentID)
 
 	url := pe.baseURL + "/api/presensi/mahasiswa"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
@@ -134,6 +136,7 @@ func (pe *PresenceEngine) Submit(ctx context.Context, c Course, key string, stud
 			isSuccess = true
 		}
 	}
+	devLog("Presence submitted", "course", c.CourseName(), "is_success", isSuccess, "msg", msg)
 
 	return msg, isSuccess, nil
 }

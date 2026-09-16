@@ -241,6 +241,7 @@ func prepareCourseQueue(courses []Course, activeNomor int) []Course {
 
 
 func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string {
+	devLog("Handling Telegram command", "cmd", cmd)
 	switch cmd {
 	case "/ping":
 		return "🏓 Pong!"
@@ -740,6 +741,7 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 	if workers > len(courseQueue) {
 		workers = len(courseQueue)
 	}
+	devLog("Dispatching scan workers", "courses", len(courseQueue), "workers", workers)
 
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
@@ -947,6 +949,7 @@ func (s *Scanner) Run(ctx context.Context) error {
 			slog.Info("Operational mode changed", "mode", modeName, "interval", plan.Interval, "courses", len(plan.Courses))
 			s.lastMode = modeName
 		}
+		devLog("Scan plan evaluated", "in_window", plan.InWindow, "interval", plan.Interval, "courses", len(plan.Courses))
 
 		if s.paused.Load() {
 			slog.Debug("Auto-presence scanner is paused, skipping cycle")

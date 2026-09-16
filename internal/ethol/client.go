@@ -85,7 +85,19 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 
-	return t.base.RoundTrip(req)
+	if !isDevBuild {
+		return t.base.RoundTrip(req)
+	}
+
+	start := time.Now()
+	resp, err := t.base.RoundTrip(req)
+	dur := time.Since(start)
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	devLogHTTP(req.Method, req.URL.String(), status, dur, err)
+	return resp, err
 }
 
 func setDefaultHeader(h http.Header, key, value string) {

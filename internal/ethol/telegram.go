@@ -423,6 +423,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			if shouldLog {
 				slog.Warn("Ignoring Telegram command from unauthorized chat", "chat_id", u.Message.Chat.ID)
 			}
+			devLog("Telegram message from unauthorized chat", "chat_id", u.Message.Chat.ID, "text", u.Message.Text)
 			continue
 		}
 		cmd := parseCommand(u.Message.Text)
@@ -433,20 +434,25 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			allowed, warnAllowed := tn.rateLimiter.Allow(time.Now(), 5*time.Second)
 			if !allowed {
 				slog.Warn("Telegram command rate limited", "cmd", cmd)
+				devLog("Telegram command rate limited", "chat_id", u.Message.Chat.ID, "cmd", cmd)
 				if warnAllowed {
 					_ = tn.SendMessage(ctx, "⏳ <b>Terlalu banyak perintah.</b> Harap tunggu beberapa detik.")
 				}
 				continue
 			}
 		}
+		cmdStart := time.Now()
 		cmdCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		reply := handler(cmdCtx, cmd)
 		cancel()
+		var sendErr error
 		if reply != "" {
 			if err := tn.SendMessage(ctx, reply); err != nil {
+				sendErr = err
 				slog.Error("Failed to reply to Telegram command", "cmd", cmd, "error", err)
 			}
 		}
+		devLogTelegramCommand(u.Message.Chat.ID, cmd, u.Message.Text, time.Since(cmdStart), len(reply), sendErr)
 	}
 
 	return nextOffset, nil
