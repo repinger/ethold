@@ -58,6 +58,7 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
 - Config via `.env` file (custom parser, not third-party); see `.env.example`
 - State persisted as atomic JSON writes to `attended_keys.json`
 - Docker: `docker compose up -d` (volume for state persistence at `/app/data/`)
+- Documentation maintenance: when modifying code that affects behavior, APIs, CLI flags, Telegram commands, configuration, or architecture described in `docs/`, update the affected documentation files in the same PR/commit series.
 
 ## Gotchas
 
