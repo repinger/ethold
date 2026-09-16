@@ -37,6 +37,7 @@ internal/ethol/                  # all domain code (flat, single package)
   academic_attendance.go # class roster, attendance stats, riwayat
   academic_notif.go      # notification polling and mark-read
   debug.go               # /debug Telegram command, runtime diagnostics
+  log.go                 # pretty CLI log handler with color support
 
   state.go       # atomic JSON persistence (attended_keys.json)
   telegram.go    # Telegram Bot API (sendMessage, long-poll getUpdates)

@@ -94,3 +94,14 @@ Run with 8 worker threads and a custom state file:
 ```bash
 ./ethold --concurrency 8 --state /var/lib/ethol/state.json
 ```
+
+---
+
+## Log Formatting
+
+`ethold` formats console logs with compact timestamps, level badges (`[DEBUG]`, `[INFO ]`, `[WARN ]`, `[ERROR]`), and key-value attributes.
+
+- **Color Support**: ANSI colors are enabled on interactive terminals (TTY).
+- **Auto-Suppression**: Colors are automatically stripped when stdout is redirected, piped to another process, or when `NO_COLOR` / `TERM=dumb` is set.
+- **Docker**: Containers run non-TTY stdout by default. To preserve colors in Docker Compose logs, enable `tty: true` on the service.
+

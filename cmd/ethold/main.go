@@ -110,7 +110,7 @@ func run() error {
 	}
 
 	logLevel := ethol.DefaultLogLevel(*verbose)
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})))
+	slog.SetDefault(slog.New(ethol.NewPrettyHandler(os.Stdout, &ethol.PrettyHandlerOptions{Level: logLevel})))
 	slog.Info("Starting ethold", "version", getVersion())
 
 	cfg, err := ethol.LoadConfig(*configPath, ethol.Config{

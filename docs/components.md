@@ -20,6 +20,7 @@ This document describes each module in the `internal/ethol` package.
 | `academic_attendance.go` | Computes attendance statistics, retrieves class rosters, and formats recap data. |
 | `academic_notif.go` | Polls ETHOL notifications, marks items as read, and handles alert dispatch. |
 | `debug.go` | Handles the `/debug` Telegram command, reporting runtime diagnostics. |
+| `log.go` | Formats colored, neat CLI log output for `slog`. |
 | `state.go` | Persists attendance keys and records to disk atomically. |
 | `telegram.go` | Sends messages and polls updates using the Telegram Bot API. |
 
@@ -268,3 +269,19 @@ This file interfaces with the Telegram Bot API.
 - `(tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) error`: Sends authentication failure alert.
 - `(tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler func(ctx context.Context, cmd string) string) (int64, error)`: Fetches single update batch from Telegram API.
 - `(tn *TelegramNotifier) StartCommandPoller(ctx, handler)`: Runs an update polling loop.
+
+---
+
+## 12. Log Handler (`log.go`)
+
+This file implements a custom `slog.Handler` formatting records for terminal readability.
+
+### Key Types
+
+- `PrettyHandlerOptions`: Configures minimum level and color preferences (`NoColor`, `ForceColor`).
+- `PrettyHandler`: Custom `slog.Handler` rendering compact timestamped, color-coded level badges and attributes.
+
+### Primary Functions
+
+- `NewPrettyHandler(w io.Writer, opts *PrettyHandlerOptions) *PrettyHandler`: Instantiates the CLI handler with auto-detected TTY and `NO_COLOR` support. ANSI colors are automatically suppressed when standard output is not a terminal (e.g. piped or Docker without `tty: true`).
+

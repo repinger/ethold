@@ -30,6 +30,7 @@ You must install these tools on your development computer:
 │       ├── debug.go
 │       ├── dev_log.go        # Debug tracing (build tag: dev)
 │       ├── dev_log_release.go# No-op tracing (build tag: !dev)
+│       ├── log.go            # Pretty CLI log handler
 │       ├── presence.go
 │       ├── scanner.go
 │       ├── scheduler.go
