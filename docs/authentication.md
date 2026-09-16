@@ -75,7 +75,7 @@ The server responds with a JSON object that contains user information:
 {
   "nomor": 12345,
   "nama": "STUDENT NAME",
-  "nip_nrp": "3120500001"
+  "nipnrp": "3120500001"
 }
 ```
 The client decodes this object into a `UserInfo` struct.

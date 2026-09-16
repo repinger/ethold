@@ -21,7 +21,7 @@ All endpoints use the base URL `https://ethol.pens.ac.id`.
   {
     "nomor": 12345,
     "nama": "STUDENT NAME",
-    "nip_nrp": "3120500001"
+    "nipnrp": "3120500001"
   }
   ```
 
