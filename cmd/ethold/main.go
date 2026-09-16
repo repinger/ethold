@@ -32,10 +32,7 @@ func run() error {
 	telegramChatID := flag.String("telegram-chat-id", "", "Telegram chat ID")
 	flag.Parse()
 
-	logLevel := slog.LevelInfo
-	if *verbose {
-		logLevel = slog.LevelDebug
-	}
+	logLevel := ethol.DefaultLogLevel(*verbose)
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})))
 
 	cfg, err := ethol.LoadConfig(*configPath, ethol.Config{
