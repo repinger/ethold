@@ -26,7 +26,7 @@ builds:
       - goos: windows
         goarch: arm
     ldflags:
-      - -s -w
+      - -s -w -X main.version={{ if .IsSnapshot }}{{ if .Tag }}{{ .Tag }}-dev-{{ .ShortCommit }}{{ else }}dev-{{ .ShortCommit }}{{ end }}{{ else }}{{ .Tag }}{{ end }}
 
 archives:
   - id: default

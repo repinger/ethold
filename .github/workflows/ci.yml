@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -66,6 +68,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Determine dev version
+        id: dev_version
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          if [ -n "$TAG" ]; then
+            echo "version=${TAG}-dev-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -108,5 +123,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BUILD_TAGS=dev
+            VERSION=${{ steps.dev_version.outputs.version }}
           cache-from: type=gha
           cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max' || '' }}
