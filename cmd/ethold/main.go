@@ -7,12 +7,83 @@ import (
 	"html"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/repinger/ethold/internal/ethol"
 )
+
+var version = ""
+
+func formatVersion(tag string, isExact bool, shortSHA string) string {
+	if isExact && tag != "" {
+		return tag
+	}
+	if tag != "" {
+		if shortSHA != "" {
+			return tag + "-dev-" + shortSHA
+		}
+		return tag + "-dev"
+	}
+	if shortSHA != "" {
+		return "dev-" + shortSHA
+	}
+	return "dev"
+}
+
+func detectGitInfo() (tag string, isExact bool, shortSHA string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if out, err := exec.CommandContext(ctx, "git", "describe", "--tags", "--exact-match").Output(); err == nil {
+		t := strings.TrimSpace(string(out))
+		if t != "" {
+			return t, true, ""
+		}
+	}
+	if out, err := exec.CommandContext(ctx, "git", "describe", "--tags", "--abbrev=0").Output(); err == nil {
+		tag = strings.TrimSpace(string(out))
+	}
+	if out, err := exec.CommandContext(ctx, "git", "rev-parse", "--short", "HEAD").Output(); err == nil {
+		shortSHA = strings.TrimSpace(string(out))
+	}
+	return tag, false, shortSHA
+}
+
+func detectBuildInfo() (tag string, shortSHA string) {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", ""
+	}
+	if info.Main.Version != "" && info.Main.Version != "(devel)" && !strings.Contains(info.Main.Version, "-") {
+		tag = info.Main.Version
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+			shortSHA = s.Value[:7]
+			break
+		}
+	}
+	return tag, shortSHA
+}
+
+func getVersion() string {
+	if version != "" {
+		return version
+	}
+	tag, isExact, sha := detectGitInfo()
+	if tag != "" || sha != "" {
+		return formatVersion(tag, isExact, sha)
+	}
+	if t, sha := detectBuildInfo(); t != "" || sha != "" {
+		return formatVersion(t, t != "", sha)
+	}
+	return "dev"
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -26,14 +97,21 @@ func run() error {
 	once := flag.Bool("once", false, "Run single scan pass and exit")
 	concurrency := flag.Int("concurrency", 4, "Concurrent workers for course checking")
 	verbose := flag.Bool("verbose", false, "Enable debug logging")
+	showVersion := flag.Bool("version", false, "Print program version and exit")
 	username := flag.String("username", "", "ETHOL CAS username or NRP")
 	password := flag.String("password", "", "ETHOL CAS password")
 	telegramToken := flag.String("telegram-token", "", "Telegram bot token")
 	telegramChatID := flag.String("telegram-chat-id", "", "Telegram chat ID")
 	flag.Parse()
 
+	if *showVersion {
+		fmt.Printf("Version %s\n", getVersion())
+		return nil
+	}
+
 	logLevel := ethol.DefaultLogLevel(*verbose)
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})))
+	slog.Info("Starting ethold", "version", getVersion())
 
 	cfg, err := ethol.LoadConfig(*configPath, ethol.Config{
 		Username:       *username,
