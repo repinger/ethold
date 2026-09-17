@@ -39,6 +39,7 @@ func (am *AcademicManager) PollNotifications(
 	ctx context.Context,
 	onPresenceNotif func(keterangan string),
 	onTaskNotif func(keterangan string),
+	onOtherNotif func(kode, keterangan string),
 ) error {
 	checkURL := fmt.Sprintf("%s/api/notifikasi/mahasiswa-belum-baca", am.baseURL)
 	reqCheck, err := http.NewRequestWithContext(ctx, http.MethodGet, checkURL, nil)
@@ -131,7 +132,11 @@ func (am *AcademicManager) PollNotifications(
 				onTaskNotif(item.Keterangan)
 			}
 		default:
-			slog.Debug("Unhandled notification code", "kode", item.KodeNotifikasi, "keterangan", item.Keterangan)
+			if onOtherNotif != nil {
+				onOtherNotif(item.KodeNotifikasi, item.Keterangan)
+			} else {
+				slog.Debug("Unhandled notification code", "kode", item.KodeNotifikasi, "keterangan", item.Keterangan)
+			}
 		}
 	}
 
@@ -162,6 +167,7 @@ func (am *AcademicManager) StartNotificationPoller(
 	ensureAuth func(ctx context.Context) error,
 	onPresenceNotif func(keterangan string),
 	onTaskNotif func(keterangan string),
+	onOtherNotif func(kode, keterangan string),
 ) {
 	if interval <= 0 {
 		interval = 30 * time.Second
@@ -171,10 +177,10 @@ func (am *AcademicManager) StartNotificationPoller(
 		pollCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		defer cancel()
 
-		err := am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif)
+		err := am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif, onOtherNotif)
 		if errors.Is(err, ErrUnauthorized) && ensureAuth != nil {
 			if reErr := ensureAuth(pollCtx); reErr == nil {
-				err = am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif)
+				err = am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif, onOtherNotif)
 			} else {
 				err = reErr
 			}

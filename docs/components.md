@@ -178,7 +178,7 @@ The academic module queries academic information including timetables, assignmen
 - `academic_tasks.go`: Retrieves assignment lists across courses, checks individual student submission status, filters open deadlines, and formats task messages.
 - `academic_materials.go`: Fetches downloadable lecture files and external video links for monitored courses, formatting them with HTML links.
 - `academic_attendance.go`: Queries student attendance history (`riwayat`), calculates semester attendance percentages, and inspects live class attendance rosters.
-- `academic_notif.go`: Manages background polling of ETHOL notifications, tracking seen IDs to prevent duplicate alerts, and triggering callbacks on new presence or task notifications.
+- `academic_notif.go`: Manages background polling of ETHOL notifications, tracking seen IDs to prevent duplicate alerts, and triggering callbacks on new presence, task, or other system notifications.
 
 ### Key Types
 
@@ -205,7 +205,7 @@ The academic module queries academic information including timetables, assignmen
 - `(am *AcademicManager) FormatScheduleText(ctx, now, year, semester)`: Formats full schedule message (`academic_schedule.go`).
 - `(am *AcademicManager) FormatTasksText(ctx, courses)`: Formats pending assignments message (`academic_tasks.go`).
 - `(am *AcademicManager) FormatMaterialsText(ctx, courses)`: Formats materials and recorded video links (`academic_materials.go`).
-- `(am *AcademicManager) StartNotificationPoller(ctx, interval, authFn, onPres, onTask)`: Periodically polls ETHOL notifications (`academic_notif.go`).
+- `(am *AcademicManager) StartNotificationPoller(ctx, interval, authFn, onPres, onTask, onOther)`: Periodically polls ETHOL notifications (`academic_notif.go`).
 - `(am *AcademicManager) InvalidateAttendanceCache()`: Clears the attendance stats cache; called after a successful presence submission (`academic.go`).
 - `(am *AcademicManager) CacheStats() AcademicCacheStats`: Returns entry counts for all in-memory caches (`academic.go`).
 

@@ -175,6 +175,12 @@ func run() error {
 			}
 		}, func(ket string) {
 			_ = notifier.SendMessage(ctx, fmt.Sprintf("📝 <b>NOTIFIKASI TUGAS BARU:</b>\n%s", html.EscapeString(ket)))
+		}, func(kode, ket string) {
+			title := "NOTIFIKASI ETHOL"
+			if k := strings.TrimSpace(kode); k != "" {
+				title = fmt.Sprintf("NOTIFIKASI %s", html.EscapeString(k))
+			}
+			_ = notifier.SendMessage(ctx, fmt.Sprintf("🔔 <b>%s:</b>\n%s", title, html.EscapeString(ket)))
 		})
 	}
 

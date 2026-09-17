@@ -100,7 +100,7 @@ The software uses standard Go concurrency primitives:
   The default worker count is 4.
 - **Background Tasks:** Two goroutines run in the background when Telegram is active:
   - The Telegram command poller processes incoming user messages.
-  - The notification poller checks ETHOL system alerts. When a `PRESENSI` notification arrives and `ETHOL_AUTO_PRESENCE` is enabled, the poller immediately triggers a non-blocking scan attempt via `TryScanOnce` in addition to sending the Telegram alert. Task (`TUGAS`) notifications send an alert only.
+  - The notification poller checks ETHOL system alerts. When a `PRESENSI` notification arrives and `ETHOL_AUTO_PRESENCE` is enabled, the poller immediately triggers a non-blocking scan attempt via `TryScanOnce` in addition to sending the Telegram alert. Task (`TUGAS`) and other system notifications send an alert only.
 - **Locks:**
   - `sync.RWMutex` guards cached data in `CourseManager` and `AcademicManager`.
   - `sync.Mutex` guards login calls and file write operations.

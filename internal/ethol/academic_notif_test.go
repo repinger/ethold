@@ -61,7 +61,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 		presenceTriggered = true
 	}, func(ket string) {
 		taskTriggered = true
-	})
+	}, nil)
 
 	if err != nil {
 		t.Fatalf("PollNotifications error: %v", err)
@@ -83,7 +83,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 		presenceTriggered = true
 	}, func(ket string) {
 		taskTriggered = true
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("PollNotifications second run error: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 	pollCtx, cancel := context.WithCancel(context.Background())
 	pollerDone := make(chan struct{})
 	go func() {
-		am.StartNotificationPoller(pollCtx, 20*time.Millisecond, nil, nil, nil)
+		am.StartNotificationPoller(pollCtx, 20*time.Millisecond, nil, nil, nil, nil)
 		close(pollerDone)
 	}()
 	time.Sleep(50 * time.Millisecond)
@@ -120,7 +120,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 	defer zeroServer.Close()
 
 	zeroAM := NewAcademicManager(client, zeroServer.URL, 5*time.Minute)
-	if err := zeroAM.PollNotifications(ctx, nil, nil); err != nil {
+	if err := zeroAM.PollNotifications(ctx, nil, nil, nil); err != nil {
 		t.Fatalf("expected nil error on zero unread, got %v", err)
 	}
 
@@ -131,7 +131,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 	defer unauthServer.Close()
 
 	unauthAM := NewAcademicManager(client, unauthServer.URL, 5*time.Minute)
-	if err := unauthAM.PollNotifications(ctx, nil, nil); !errors.Is(err, ErrUnauthorized) {
+	if err := unauthAM.PollNotifications(ctx, nil, nil, nil); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized, got %v", err)
 	}
 }
@@ -168,7 +168,7 @@ func TestAcademicManager_NotificationPolling_StringID(t *testing.T) {
 	am := NewAcademicManager(client, server.URL, 5*time.Minute)
 	err = am.PollNotifications(context.Background(), func(ket string) {
 		presenceTriggered = true
-	}, nil)
+	}, nil, nil)
 
 	if err != nil {
 		t.Fatalf("PollNotifications error with string ID: %v", err)
@@ -207,9 +207,24 @@ func TestAcademicManager_PollNotifications_UnhandledCode(t *testing.T) {
 	}
 
 	am := NewAcademicManager(client, server.URL, 5*time.Minute)
-	err = am.PollNotifications(context.Background(), nil, nil)
+	var (
+		otherTriggered bool
+		receivedKode   string
+		receivedKet    string
+	)
+	err = am.PollNotifications(context.Background(), nil, nil, func(kode, ket string) {
+		otherTriggered = true
+		receivedKode = kode
+		receivedKet = ket
+	})
 	if err != nil {
 		t.Fatalf("PollNotifications unhandled code error: %v", err)
+	}
+	if !otherTriggered {
+		t.Errorf("expected other notification callback to trigger")
+	}
+	if receivedKode != "SISTEM-INFO" || receivedKet != "Pengumuman kampus" {
+		t.Errorf("unexpected callback args: kode=%q ket=%q", receivedKode, receivedKet)
 	}
 }
 
@@ -251,7 +266,7 @@ func TestAcademicManager_StartNotificationPoller_RetryAuth(t *testing.T) {
 		default:
 		}
 		return nil
-	}, nil, nil)
+	}, nil, nil, nil)
 
 	select {
 	case <-ensureAuthCalled:
@@ -302,7 +317,7 @@ func TestAcademicManager_BoundedNotificationMemory(t *testing.T) {
 
 	// Poll 12 batches = 1200 notifications
 	for i := 0; i < 12; i++ {
-		if err := am.PollNotifications(ctx, nil, nil); err != nil {
+		if err := am.PollNotifications(ctx, nil, nil, nil); err != nil {
 			t.Fatalf("poll notifications batch %d: %v", i, err)
 		}
 	}
