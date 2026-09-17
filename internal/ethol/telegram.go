@@ -57,6 +57,11 @@ func (rl *chatRateLimiter) Allow(now time.Time, warnCooldown time.Duration) (all
 	return false, false
 }
 
+type commandMessageRecord struct {
+	userMsgID   int64
+	replyMsgIDs []int64
+}
+
 type TelegramNotifier struct {
 	client        *http.Client
 	pollClient    *http.Client
@@ -67,6 +72,9 @@ type TelegramNotifier struct {
 	rateLimiter   *chatRateLimiter
 	unauthMu      sync.Mutex
 	lastUnauthLog time.Time
+	cmdHistoryMu  sync.Mutex
+	cmdHistory    []commandMessageRecord
+	deleteWg      sync.WaitGroup
 }
 
 func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *TelegramNotifier {
@@ -149,27 +157,37 @@ func splitMessage(text string, maxLen int) []string {
 }
 
 func (tn *TelegramNotifier) SendMessage(ctx context.Context, text string) error {
+	_, err := tn.SendMessageIDs(ctx, text)
+	return err
+}
+
+func (tn *TelegramNotifier) SendMessageIDs(ctx context.Context, text string) ([]int64, error) {
 	if tn.token == "" || tn.chatID == "" {
 		slog.Debug("Telegram notification skipped: token or chat_id empty")
-		return nil
+		return nil, nil
 	}
 
 	chunks := splitMessage(text, maxTelegramMessageLen)
+	var msgIDs []int64
 	for i, chunk := range chunks {
 		if i > 0 {
 			timer := time.NewTimer(100 * time.Millisecond)
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				return ctx.Err()
+				return msgIDs, ctx.Err()
 			case <-timer.C:
 			}
 		}
-		if err := tn.sendSingleMessage(ctx, chunk); err != nil {
-			return err
+		msgID, err := tn.sendSingleMessage(ctx, chunk)
+		if err != nil {
+			return msgIDs, err
+		}
+		if msgID > 0 {
+			msgIDs = append(msgIDs, msgID)
 		}
 	}
-	return nil
+	return msgIDs, nil
 }
 
 type tgErrorParameters struct {
@@ -182,6 +200,13 @@ type tgErrorBody struct {
 	Parameters  tgErrorParameters `json:"parameters"`
 }
 
+type tgSendResponse struct {
+	Ok     bool `json:"ok"`
+	Result *struct {
+		MessageID int64 `json:"message_id"`
+	} `json:"result"`
+}
+
 func extractRetryAfter(body []byte) int {
 	var eb tgErrorBody
 	if err := json.Unmarshal(body, &eb); err == nil && eb.Parameters.RetryAfter > 0 {
@@ -190,7 +215,7 @@ func extractRetryAfter(body []byte) int {
 	return 0
 }
 
-func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) error {
+func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) (int64, error) {
 	payload := tgSendMessagePayload{
 		ChatID:    tn.chatID,
 		Text:      text,
@@ -199,28 +224,37 @@ func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) 
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("marshal telegram payload: %w", err)
+		return 0, fmt.Errorf("marshal telegram payload: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("%s/bot%s/sendMessage", tn.baseURL, tn.token)
 
+	client := tn.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+
 	for attempt := 0; attempt < 2; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 		if err != nil {
-			return tn.sanitizeError(fmt.Errorf("create telegram req: %w", err))
+			return 0, tn.sanitizeError(fmt.Errorf("create telegram req: %w", err))
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := tn.client.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
-			return tn.sanitizeError(fmt.Errorf("send telegram request: %w", err))
+			return 0, tn.sanitizeError(fmt.Errorf("send telegram request: %w", err))
 		}
 
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
-			return nil
+			var sr tgSendResponse
+			if err := json.Unmarshal(respBody, &sr); err == nil && sr.Result != nil {
+				return sr.Result.MessageID, nil
+			}
+			return 0, nil
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
@@ -232,7 +266,7 @@ func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) 
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				return ctx.Err()
+				return 0, ctx.Err()
 			case <-timer.C:
 				continue
 			}
@@ -240,12 +274,12 @@ func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) 
 
 		errText := strings.TrimSpace(string(respBody))
 		if errText != "" {
-			return tn.sanitizeError(fmt.Errorf("telegram api error: HTTP %d: %s", resp.StatusCode, errText))
+			return 0, tn.sanitizeError(fmt.Errorf("telegram api error: HTTP %d: %s", resp.StatusCode, errText))
 		}
-		return fmt.Errorf("telegram api error: HTTP %d", resp.StatusCode)
+		return 0, fmt.Errorf("telegram api error: HTTP %d", resp.StatusCode)
 	}
 
-	return fmt.Errorf("telegram api error: rate limit exceeded")
+	return 0, fmt.Errorf("telegram api error: rate limit exceeded")
 }
 
 func (tn *TelegramNotifier) NotifyPresenceSuccess(ctx context.Context, mkName, dosen, key, respMsg string) error {
@@ -334,6 +368,68 @@ func (tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) er
 		return sendErr
 	}
 	return nil
+}
+
+type tgDeleteMessagesPayload struct {
+	ChatID     string  `json:"chat_id"`
+	MessageIDs []int64 `json:"message_ids"`
+}
+
+func (tn *TelegramNotifier) DeleteMessages(ctx context.Context, messageIDs []int64) error {
+	if tn.token == "" || tn.chatID == "" || len(messageIDs) == 0 {
+		return nil
+	}
+
+	client := tn.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	endpoint := fmt.Sprintf("%s/bot%s/deleteMessages", tn.baseURL, tn.token)
+
+	for len(messageIDs) > 0 {
+		chunkSize := len(messageIDs)
+		if chunkSize > 100 {
+			chunkSize = 100
+		}
+		chunk := messageIDs[:chunkSize]
+		messageIDs = messageIDs[chunkSize:]
+
+		payload := tgDeleteMessagesPayload{
+			ChatID:     tn.chatID,
+			MessageIDs: chunk,
+		}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal deleteMessages payload: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+		if err != nil {
+			return tn.sanitizeError(fmt.Errorf("create deleteMessages req: %w", err))
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return tn.sanitizeError(fmt.Errorf("send deleteMessages request: %w", err))
+		}
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			errText := strings.TrimSpace(string(respBody))
+			if errText != "" {
+				return tn.sanitizeError(fmt.Errorf("telegram deleteMessages api error: HTTP %d: %s", resp.StatusCode, errText))
+			}
+			return fmt.Errorf("telegram deleteMessages api error: HTTP %d", resp.StatusCode)
+		}
+	}
+	return nil
+}
+
+func (tn *TelegramNotifier) WaitPendingDeletions() {
+	tn.deleteWg.Wait()
 }
 
 
@@ -443,15 +539,57 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 		}
 		cmdStart := time.Now()
 		cmdCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+
 		reply := handler(cmdCtx, cmd)
 		cancel()
 		var sendErr error
+		var replyIDs []int64
 		if reply != "" {
-			if err := tn.SendMessage(ctx, reply); err != nil {
+			var err error
+			replyIDs, err = tn.SendMessageIDs(ctx, reply)
+			if err != nil {
 				sendErr = err
 				slog.Error("Failed to reply to Telegram command", "cmd", cmd, "error", err)
 			}
 		}
+
+		// Batch cleanup check: show output first, then when a 4th command arrives
+		// after 3 recorded interactions, purge all previous user commands and bot replies.
+		var toDelete []int64
+		tn.cmdHistoryMu.Lock()
+		if len(tn.cmdHistory) >= 3 {
+			toDelete = make([]int64, 0, len(tn.cmdHistory)*2)
+			for _, rec := range tn.cmdHistory {
+				if rec.userMsgID > 0 {
+					toDelete = append(toDelete, rec.userMsgID)
+				}
+				toDelete = append(toDelete, rec.replyMsgIDs...)
+			}
+			tn.cmdHistory = append(tn.cmdHistory[:0], commandMessageRecord{
+				userMsgID:   u.Message.MessageID,
+				replyMsgIDs: replyIDs,
+			})
+		} else {
+			tn.cmdHistory = append(tn.cmdHistory, commandMessageRecord{
+				userMsgID:   u.Message.MessageID,
+				replyMsgIDs: replyIDs,
+			})
+		}
+		tn.cmdHistoryMu.Unlock()
+
+		if len(toDelete) > 0 {
+			tn.deleteWg.Add(1)
+			go func(ids []int64) {
+				defer tn.deleteWg.Done()
+				delCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+				defer cancel()
+				if err := tn.DeleteMessages(delCtx, ids); err != nil {
+					slog.Warn("Failed to delete previous Telegram messages", "count", len(ids), "error", err)
+					devLog("Failed to delete previous Telegram messages", "error", err)
+				}
+			}(toDelete)
+		}
+
 		devLogTelegramCommand(u.Message.Chat.ID, cmd, u.Message.Text, time.Since(cmdStart), len(reply), sendErr)
 	}
 

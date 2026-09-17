@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestTelegramNotifier_PollOnce(t *testing.T) {
@@ -469,6 +470,390 @@ func TestTelegramNotifier_NotifyAuthFailure(t *testing.T) {
 	}
 	if !strings.Contains(sentPayload.Text, "401 Unauthorized") {
 		t.Errorf("expected error message detail, got: %s", sentPayload.Text)
+	}
+}
+
+func TestTelegramNotifier_SendMessageIDs(t *testing.T) {
+	var currentMsgID int64 = 100
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot123/sendMessage" {
+			currentMsgID++
+			resp := map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"message_id": currentMsgID,
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "777")
+	ids, err := tn.SendMessageIDs(context.Background(), "hello world")
+	if err != nil {
+		t.Fatalf("SendMessageIDs failed: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 101 {
+		t.Fatalf("expected message ID [101], got %v", ids)
+	}
+}
+
+func TestTelegramNotifier_DeleteMessages(t *testing.T) {
+	var deletedBatches [][]int64
+	var mu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot123/deleteMessages" {
+			var payload tgDeleteMessagesPayload
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if payload.ChatID != "777" {
+				http.Error(w, "bad chat_id", http.StatusBadRequest)
+				return
+			}
+			mu.Lock()
+			deletedBatches = append(deletedBatches, payload.MessageIDs)
+			mu.Unlock()
+			w.Write([]byte(`{"ok":true,"result":true}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "777")
+
+	// 1. Test empty IDs no-op
+	if err := tn.DeleteMessages(context.Background(), nil); err != nil {
+		t.Fatalf("unexpected error on nil IDs: %v", err)
+	}
+
+	// 2. Test batch of 150 IDs (should chunk into 100 + 50)
+	var testIDs []int64
+	for i := int64(1); i <= 150; i++ {
+		testIDs = append(testIDs, i)
+	}
+	if err := tn.DeleteMessages(context.Background(), testIDs); err != nil {
+		t.Fatalf("DeleteMessages failed: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(deletedBatches) != 2 {
+		t.Fatalf("expected 2 delete batches, got %d", len(deletedBatches))
+	}
+	if len(deletedBatches[0]) != 100 {
+		t.Errorf("expected 100 IDs in first batch, got %d", len(deletedBatches[0]))
+	}
+	if len(deletedBatches[1]) != 50 {
+		t.Errorf("expected 50 IDs in second batch, got %d", len(deletedBatches[1]))
+	}
+}
+
+func TestTelegramNotifier_BatchCleanupCycle(t *testing.T) {
+	var mu sync.Mutex
+	var deletedBatches [][]int64
+	var nextBotMsgID int64 = 500
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			// Not used by direct PollOnce test below, handled per sub-call
+			w.Write([]byte(`{"ok":true,"result":[]}`))
+
+		case "/bot123/sendMessage":
+			mu.Lock()
+			nextBotMsgID++
+			botID := nextBotMsgID
+			mu.Unlock()
+			resp := map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"message_id": botID,
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "/bot123/deleteMessages":
+			var payload tgDeleteMessagesPayload
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			mu.Lock()
+			deletedBatches = append(deletedBatches, payload.MessageIDs)
+			mu.Unlock()
+			w.Write([]byte(`{"ok":true,"result":true}`))
+
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	// Disable rate limiter for testing to send sequential commands quickly
+	tn.rateLimiter = nil
+
+	handler := func(ctx context.Context, cmd string) string {
+		return "reply to " + cmd
+	}
+
+	ctx := context.Background()
+
+	// Helper to simulate polling a single command update
+	pollCommand := func(updateID, userMsgID int64, cmdText string) {
+		// Prepare single-message update response directly via mocked poll
+		server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/bot123/getUpdates":
+				resp := tgUpdatesResponse{
+					Ok: true,
+					Result: []tgUpdate{
+						{
+							UpdateID: updateID,
+							Message: &tgMessage{
+								MessageID: userMsgID,
+								Chat:      tgChat{ID: 999},
+								Text:      cmdText,
+							},
+						},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+
+			case "/bot123/sendMessage":
+				mu.Lock()
+				nextBotMsgID++
+				botID := nextBotMsgID
+				mu.Unlock()
+				resp := map[string]any{
+					"ok": true,
+					"result": map[string]any{
+						"message_id": botID,
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+
+			case "/bot123/deleteMessages":
+				var payload tgDeleteMessagesPayload
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+				mu.Lock()
+				deletedBatches = append(deletedBatches, payload.MessageIDs)
+				mu.Unlock()
+				w.Write([]byte(`{"ok":true,"result":true}`))
+
+			default:
+				http.NotFound(w, r)
+			}
+		})
+
+		_, err := tn.PollOnce(ctx, updateID, handler)
+		if err != nil {
+			t.Fatalf("PollOnce failed: %v", err)
+		}
+		tn.WaitPendingDeletions()
+	}
+
+	// Command 1 (User msg 10 -> Bot reply 501)
+	pollCommand(1, 10, "/status")
+	mu.Lock()
+	if len(deletedBatches) != 0 {
+		t.Fatalf("expected 0 delete calls after command 1, got %d", len(deletedBatches))
+	}
+	mu.Unlock()
+
+	// Command 2 (User msg 20 -> Bot reply 502)
+	pollCommand(2, 20, "/ping")
+	mu.Lock()
+	if len(deletedBatches) != 0 {
+		t.Fatalf("expected 0 delete calls after command 2, got %d", len(deletedBatches))
+	}
+	mu.Unlock()
+
+	// Command 3 (User msg 30 -> Bot reply 503)
+	pollCommand(3, 30, "/help")
+	mu.Lock()
+	if len(deletedBatches) != 0 {
+		t.Fatalf("expected 0 delete calls after command 3, got %d", len(deletedBatches))
+	}
+	mu.Unlock()
+
+	// Command 4 (User msg 40 -> Bot reply 504)
+	// Must trigger deletion of commands 1-3: user IDs [10, 20, 30] and bot IDs [501, 502, 503]
+	pollCommand(4, 40, "/whoami")
+	mu.Lock()
+	if len(deletedBatches) != 1 {
+		t.Fatalf("expected 1 delete call after command 4, got %d", len(deletedBatches))
+	}
+	expectedDeleted := []int64{10, 501, 20, 502, 30, 503}
+	if len(deletedBatches[0]) != len(expectedDeleted) {
+		t.Fatalf("expected %d deleted IDs, got %v", len(expectedDeleted), deletedBatches[0])
+	}
+	for i, id := range expectedDeleted {
+		if deletedBatches[0][i] != id {
+			t.Errorf("deleted batch index %d: expected %d, got %d", i, id, deletedBatches[0][i])
+		}
+	}
+	mu.Unlock()
+
+	// Command 5 (User msg 50 -> Bot reply 505) - part of second batch
+	pollCommand(5, 50, "/jadwal")
+	mu.Lock()
+	if len(deletedBatches) != 1 {
+		t.Fatalf("expected still 1 delete call after command 5, got %d", len(deletedBatches))
+	}
+	mu.Unlock()
+
+	// Command 6 (User msg 60 -> Bot reply 606)
+	pollCommand(6, 60, "/courses")
+	mu.Lock()
+	if len(deletedBatches) != 1 {
+		t.Fatalf("expected still 1 delete call after command 6, got %d", len(deletedBatches))
+	}
+	mu.Unlock()
+
+	// Command 7 (User msg 70 -> Bot reply 507)
+	// Must trigger deletion of commands 4-6: user IDs [40, 50, 60] and bot IDs [504, 505, 506]
+	pollCommand(7, 70, "/tugas")
+	mu.Lock()
+	if len(deletedBatches) != 2 {
+		t.Fatalf("expected 2 delete calls after command 7, got %d", len(deletedBatches))
+	}
+	expectedBatch2 := []int64{40, 504, 50, 505, 60, 506}
+	if len(deletedBatches[1]) != len(expectedBatch2) {
+		t.Fatalf("expected %d deleted IDs in batch 2, got %v", len(expectedBatch2), deletedBatches[1])
+	}
+	for i, id := range expectedBatch2 {
+		if deletedBatches[1][i] != id {
+			t.Errorf("deleted batch 2 index %d: expected %d, got %d", i, id, deletedBatches[1][i])
+		}
+	}
+	mu.Unlock()
+}
+
+func TestTelegramNotifier_BatchCleanup_OutputBeforeDeletion(t *testing.T) {
+	var mu sync.Mutex
+	var order []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			w.Write([]byte(`{"ok":true,"result":[]}`))
+		case "/bot123/sendMessage":
+			mu.Lock()
+			order = append(order, "send")
+			mu.Unlock()
+			resp := map[string]any{
+				"ok":     true,
+				"result": map[string]any{"message_id": 999},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		case "/bot123/deleteMessages":
+			mu.Lock()
+			order = append(order, "delete")
+			mu.Unlock()
+			w.Write([]byte(`{"ok":true,"result":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	tn.rateLimiter = nil
+
+	handler := func(ctx context.Context, cmd string) string {
+		time.Sleep(20 * time.Millisecond)
+		return "reply: " + cmd
+	}
+
+	ctx := context.Background()
+	pollCommand := func(updateID, userMsgID int64) {
+		server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/bot123/getUpdates":
+				resp := tgUpdatesResponse{
+					Ok: true,
+					Result: []tgUpdate{
+						{
+							UpdateID: updateID,
+							Message: &tgMessage{
+								MessageID: userMsgID,
+								Chat:      tgChat{ID: 999},
+								Text:      "/test",
+							},
+						},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+			case "/bot123/sendMessage":
+				mu.Lock()
+				order = append(order, "send")
+				mu.Unlock()
+				resp := map[string]any{
+					"ok":     true,
+					"result": map[string]any{"message_id": 999},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+			case "/bot123/deleteMessages":
+				mu.Lock()
+				order = append(order, "delete")
+				mu.Unlock()
+				w.Write([]byte(`{"ok":true,"result":true}`))
+			default:
+				http.NotFound(w, r)
+			}
+		})
+
+		_, err := tn.PollOnce(ctx, updateID, handler)
+		if err != nil {
+			t.Fatalf("PollOnce failed: %v", err)
+		}
+		tn.WaitPendingDeletions()
+	}
+
+	// Commands 1-3
+	pollCommand(1, 10)
+	pollCommand(2, 20)
+	pollCommand(3, 30)
+
+	mu.Lock()
+	order = nil // reset order before 4th command
+	mu.Unlock()
+
+	// Command 4: should send command output BEFORE deleting previous messages
+	pollCommand(4, 40)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) < 2 {
+		t.Fatalf("expected at least [send, delete], got %v", order)
+	}
+	if order[0] != "send" || order[1] != "delete" {
+		t.Fatalf("expected output first ('send' before 'delete'), got order: %v", order)
 	}
 }
 
