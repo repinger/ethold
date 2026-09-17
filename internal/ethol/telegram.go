@@ -246,12 +246,15 @@ func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) 
 			return 0, tn.sanitizeError(fmt.Errorf("send telegram request: %w", err))
 		}
 
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
 			var sr tgSendResponse
-			if err := json.Unmarshal(respBody, &sr); err == nil && sr.Result != nil {
+			if err := json.Unmarshal(respBody, &sr); err != nil {
+				return 0, tn.sanitizeError(fmt.Errorf("decode sendMessage response: %w", err))
+			}
+			if sr.Result != nil {
 				return sr.Result.MessageID, nil
 			}
 			return 0, nil

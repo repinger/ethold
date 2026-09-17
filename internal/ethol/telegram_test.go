@@ -506,6 +506,40 @@ func TestTelegramNotifier_SendMessageIDs(t *testing.T) {
 	}
 }
 
+func TestTelegramNotifier_SendMessageIDs_LargeResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot123/sendMessage" {
+			// Simulate a realistic large response (>4096 bytes) for a message with entities
+			padding := strings.Repeat("A", 6000)
+			resp := map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"message_id": int64(888),
+					"text":       padding,
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "777")
+	ids, err := tn.SendMessageIDs(context.Background(), "roster text")
+	if err != nil {
+		t.Fatalf("SendMessageIDs failed: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 888 {
+		t.Fatalf("expected message ID [888], got %v", ids)
+	}
+}
+
 func TestTelegramNotifier_DeleteMessages(t *testing.T) {
 	var deletedBatches [][]int64
 	var mu sync.Mutex
