@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -49,20 +48,6 @@ func (c Course) CourseName() string {
 type authConfigResponse struct {
 	TahunAktif    any `json:"tahun_aktif"`
 	SemesterAktif any `json:"semester_aktif"`
-}
-
-func toInt(v any) int {
-	switch val := v.(type) {
-	case int:
-		return val
-	case float64:
-		return int(val)
-	case string:
-		i, _ := strconv.Atoi(val)
-		return i
-	default:
-		return 0
-	}
 }
 
 type CourseManager struct {
@@ -173,8 +158,8 @@ func (cm *CourseManager) refreshLocked(ctx context.Context) ([]Course, error) {
 	if respConf.StatusCode == http.StatusOK {
 		var conf authConfigResponse
 		if err := json.NewDecoder(respConf.Body).Decode(&conf); err == nil {
-			tahun = toInt(conf.TahunAktif)
-			semester = toInt(conf.SemesterAktif)
+			tahun = parseCount(conf.TahunAktif)
+			semester = parseCount(conf.SemesterAktif)
 		}
 	}
 
