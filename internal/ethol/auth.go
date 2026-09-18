@@ -18,6 +18,8 @@ import (
 	"golang.org/x/net/html"
 )
 
+var ErrUnauthorized = errors.New("unauthorized: session expired")
+
 type UserInfo struct {
 	Nomor  int    `json:"nomor"`
 	Nama   string `json:"nama"`

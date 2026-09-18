@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 )
-
-var ErrUnauthorized = errors.New("unauthorized: session expired")
 
 type PresenceEngine struct {
 	client  *http.Client
