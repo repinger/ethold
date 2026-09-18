@@ -95,5 +95,5 @@ If a user session already exists:
 
 ### Re-login Note
 
-In `scanner.go`, the code handles user `/relogin` commands from Telegram.
+In `commands.go`, the code handles user `/relogin` commands from Telegram.
 When a complete session reset is necessary, the system clears current user data and repeats the full four-step login sequence.

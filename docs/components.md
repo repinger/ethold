@@ -12,7 +12,8 @@ This document describes each module in the `internal/ethol` package.
 | `courses.go` | Fetches and caches student course registrations. |
 | `presence.go` | Checks course attendance status and submits attendance codes. |
 | `scheduler.go` | Calculates scan intervals based on Western Indonesia Time (WIB). |
-| `scanner.go` | Orchestrates background scanning, worker queues, and bot commands. |
+| `scanner.go` | Orchestrates background scanning, worker queues, and daemon lifecycle. |
+| `commands.go` | Routes and formats Telegram bot commands. |
 | `academic.go` | Academic manager struct, cache lifecycle, and common utilities. |
 | `academic_schedule.go` | Retrieves timetable schedules, matches active courses, and formats schedule views. |
 | `academic_tasks.go` | Queries course assignments, validates submission status, and formats task lists. |
@@ -149,7 +150,7 @@ This file manages schedule-driven scan timing based on class schedules and Weste
 
 ## 7. Scanner (`scanner.go`)
 
-This file orchestrates scanning operations, concurrency, and Telegram commands.
+This file orchestrates scanning operations, concurrency, and daemon lifecycle.
 
 ### Key Types
 
@@ -165,6 +166,15 @@ This file orchestrates scanning operations, concurrency, and Telegram commands.
 - `(s *Scanner) ScanCourses(ctx context.Context, courses []Course) (int, error)`: Scans a specific subset of courses.
 - `(s *Scanner) TryScanCourses(ctx context.Context, courses []Course) (int, bool, error)`: Non-blocking variant of `ScanCourses`.
 - `(s *Scanner) Status() ScannerStatus`: Returns a snapshot of current operational metrics.
+
+---
+
+## 7.1 Telegram Commands (`commands.go`)
+
+This file handles routing and response formatting for interactive Telegram bot commands.
+
+### Primary Functions
+
 - `(s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string`: Routes and executes Telegram bot commands.
 
 ---

@@ -25,6 +25,7 @@ You must install these tools on your development computer:
 │       ├── academic_tasks.go
 │       ├── auth.go
 │       ├── client.go
+│       ├── commands.go
 │       ├── config.go
 │       ├── courses.go
 │       ├── debug.go
