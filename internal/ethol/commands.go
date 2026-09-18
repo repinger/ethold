@@ -304,13 +304,13 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		if s.academic == nil || s.presence == nil {
 			return "❌ Fitur presensi kelas tidak tersedia."
 		}
-		s.cmdRateMu.Lock()
-		if !s.lastRosterTime.IsZero() && time.Since(s.lastRosterTime) < 20*time.Second && s.lastRosterMsg != "" {
-			cachedMsg := s.lastRosterMsg
-			s.cmdRateMu.Unlock()
+		s.cmdState.mu.Lock()
+		if !s.cmdState.lastRosterTime.IsZero() && time.Since(s.cmdState.lastRosterTime) < 20*time.Second && s.cmdState.lastRosterMsg != "" {
+			cachedMsg := s.cmdState.lastRosterMsg
+			s.cmdState.mu.Unlock()
 			return cachedMsg
 		}
-		s.cmdRateMu.Unlock()
+		s.cmdState.mu.Unlock()
 
 		loadRoster := func() (string, error) {
 			courses, err := s.courses.GetCourses(ctx)
@@ -341,10 +341,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		if err != nil {
 			return fmt.Sprintf("❌ <b>Gagal Mengambil Presensi Kelas:</b> %s", html.EscapeString(err.Error()))
 		}
-		s.cmdRateMu.Lock()
-		s.lastRosterTime = time.Now()
-		s.lastRosterMsg = msg
-		s.cmdRateMu.Unlock()
+		s.cmdState.mu.Lock()
+		s.cmdState.lastRosterTime = time.Now()
+		s.cmdState.lastRosterMsg = msg
+		s.cmdState.mu.Unlock()
 		return msg
 
 	case "/rekap":
@@ -385,21 +385,21 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return msg
 
 	case "/relogin":
-		s.cmdRateMu.Lock()
-		if !s.lastRelogin.IsZero() && time.Since(s.lastRelogin) < 30*time.Second {
-			remaining := (30*time.Second - time.Since(s.lastRelogin)).Round(time.Second)
-			s.cmdRateMu.Unlock()
+		s.cmdState.mu.Lock()
+		if !s.cmdState.lastRelogin.IsZero() && time.Since(s.cmdState.lastRelogin) < 30*time.Second {
+			remaining := (30*time.Second - time.Since(s.cmdState.lastRelogin)).Round(time.Second)
+			s.cmdState.mu.Unlock()
 			return fmt.Sprintf("⏳ <b>Relogin Dibatasi</b>\nSesi CAS baru saja diperbarui. Harap tunggu %v sebelum mencoba relogin lagi.", remaining)
 		}
-		s.cmdRateMu.Unlock()
+		s.cmdState.mu.Unlock()
 
 		user, err := s.auth.Relogin(ctx)
 		if err != nil {
 			return fmt.Sprintf("❌ <b>Relogin Gagal:</b> %s", html.EscapeString(err.Error()))
 		}
-		s.cmdRateMu.Lock()
-		s.lastRelogin = time.Now()
-		s.cmdRateMu.Unlock()
+		s.cmdState.mu.Lock()
+		s.cmdState.lastRelogin = time.Now()
+		s.cmdState.mu.Unlock()
 
 		nama := ""
 		if user != nil {

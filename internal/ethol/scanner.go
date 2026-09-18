@@ -34,36 +34,40 @@ type ScannerStatus struct {
 	Goroutines       int
 }
 
-type Scanner struct {
-	auth           *AuthManager
-	courses        *CourseManager
-	presence       *PresenceEngine
-	academic       *AcademicManager
-	state          *StateManager
-	notifier       *TelegramNotifier
-	concurr        int
-	lastMode       string
-	startTime      time.Time
-	scanMu         sync.Mutex
-	statusMu       sync.RWMutex
-	lastScanTime   time.Time
-	lastScanDur    time.Duration
-	lastScanErr    error
-	lastAttended   int
-	currentPlan    ScanPlan
-	paused         atomic.Bool
-	minDelay       time.Duration
-	maxDelay       time.Duration
-	delayMu        sync.RWMutex
-	minStagger     time.Duration
-	maxStagger     time.Duration
-	staggerMu      sync.RWMutex
-	cmdRateMu      sync.Mutex
+type commandState struct {
+	mu             sync.Mutex
 	lastRelogin    time.Time
 	lastRosterTime time.Time
 	lastRosterMsg  string
-	serverDown     atomic.Bool
-	authFailed     atomic.Bool
+}
+
+type Scanner struct {
+	auth         *AuthManager
+	courses      *CourseManager
+	presence     *PresenceEngine
+	academic     *AcademicManager
+	state        *StateManager
+	notifier     *TelegramNotifier
+	concurr      int
+	lastMode     string
+	startTime    time.Time
+	scanMu       sync.Mutex
+	statusMu     sync.RWMutex
+	lastScanTime time.Time
+	lastScanDur  time.Duration
+	lastScanErr  error
+	lastAttended int
+	currentPlan  ScanPlan
+	paused       atomic.Bool
+	minDelay     time.Duration
+	maxDelay     time.Duration
+	delayMu      sync.RWMutex
+	minStagger   time.Duration
+	maxStagger   time.Duration
+	staggerMu    sync.RWMutex
+	cmdState     commandState
+	serverDown   atomic.Bool
+	authFailed   atomic.Bool
 }
 
 func NewScanner(
