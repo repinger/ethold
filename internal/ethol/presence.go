@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -35,7 +36,10 @@ func (pe *PresenceEngine) CheckCourse(ctx context.Context, c Course) (string, bo
 	if err != nil {
 		return "", false, fmt.Errorf("check presence request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return "", false, ErrUnauthorized
@@ -44,9 +48,9 @@ func (pe *PresenceEngine) CheckCourse(ctx context.Context, c Course) (string, bo
 		return "", false, fmt.Errorf("check presence HTTP %d", resp.StatusCode)
 	}
 
-	var raw json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return "", false, fmt.Errorf("decode presence check: %w", err)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
+	if err != nil {
+		return "", false, fmt.Errorf("read presence check: %w", err)
 	}
 
 	key := extractPresenceKey(raw)
@@ -99,7 +103,10 @@ func (pe *PresenceEngine) Submit(ctx context.Context, c Course, key string, stud
 	if err != nil {
 		return "", false, fmt.Errorf("submit presence request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return "", false, ErrUnauthorized
@@ -109,7 +116,7 @@ func (pe *PresenceEngine) Submit(ctx context.Context, c Course, key string, stud
 	}
 
 	var res presenceSubmitResponse
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&res); err != nil {
 		return "", false, fmt.Errorf("decode submit response: %w", err)
 	}
 
@@ -140,7 +147,7 @@ func (pe *PresenceEngine) Submit(ctx context.Context, c Course, key string, stud
 
 func extractPresenceKey(raw []byte) string {
 	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 {
+	if len(trimmed) <= 2 {
 		return ""
 	}
 
