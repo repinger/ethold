@@ -102,6 +102,8 @@ func run() error {
 	password := flag.String("password", "", "ETHOL CAS password")
 	telegramToken := flag.String("telegram-token", "", "Telegram bot token")
 	telegramChatID := flag.String("telegram-chat-id", "", "Telegram chat ID")
+	telegramCommandThreadID := flag.Int64("telegram-command-thread-id", 0, "Telegram command topic thread ID (forum supergroups)")
+	telegramNotifThreadID := flag.Int64("telegram-notif-thread-id", 0, "Telegram notification topic thread ID (forum supergroups)")
 	flag.Parse()
 
 	if *showVersion {
@@ -114,10 +116,12 @@ func run() error {
 	slog.Info("Starting ethold", "version", getVersion())
 
 	cfg, err := ethol.LoadConfig(*configPath, ethol.Config{
-		Username:       *username,
-		Password:       *password,
-		TelegramToken:  *telegramToken,
-		TelegramChatID: *telegramChatID,
+		Username:                *username,
+		Password:                *password,
+		TelegramToken:           *telegramToken,
+		TelegramChatID:          *telegramChatID,
+		TelegramCommandThreadID: *telegramCommandThreadID,
+		TelegramNotifThreadID:   *telegramNotifThreadID,
 	})
 	if err != nil {
 		slog.Error("Failed to load configuration", "path", *configPath, "error", err)
@@ -138,6 +142,7 @@ func run() error {
 	courses := ethol.NewCourseManager(client, baseURL, 10*time.Minute)
 	academic := ethol.NewAcademicManager(client, baseURL, 10*time.Minute)
 	notifier := ethol.NewTelegramNotifier(client, "", cfg.TelegramToken, cfg.TelegramChatID)
+	notifier.SetThreadIDs(cfg.TelegramCommandThreadID, cfg.TelegramNotifThreadID)
 
 	var (
 		state    *ethol.StateManager
