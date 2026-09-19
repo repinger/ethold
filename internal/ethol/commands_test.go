@@ -233,8 +233,8 @@ func TestScanner_AcademicCommands(t *testing.T) {
 				{
 					"id": 1,
 					"judul": "Pengumuman Akademik",
-					"isi_pengumuman": "Kuliah libur minggu depan.",
-					"tanggal_indonesia": "10-09-2024",
+					"isi": "Kuliah libur minggu depan.",
+					"waktu_indonesia": "10-09-2024",
 					"is_important": 1,
 					"is_pinned": 1
 				}
@@ -294,8 +294,8 @@ func TestScanner_AcademicCommands(t *testing.T) {
 
 	// 2b. /pengumuman
 	replyPengumuman := scanner.HandleTelegramCommand(ctx, "/pengumuman")
-	if !strings.Contains(replyPengumuman, "Pengumuman Akademik") || !strings.Contains(replyPengumuman, "PENGUMUMAN KAMPUS") {
-		t.Errorf("expected /pengumuman to contain 'Pengumuman Akademik', got: %s", replyPengumuman)
+	if !strings.Contains(replyPengumuman, "Pengumuman Akademik") || !strings.Contains(replyPengumuman, "PENGUMUMAN KAMPUS") || !strings.Contains(replyPengumuman, "📅 10-09-2024") {
+		t.Errorf("expected /pengumuman to contain 'Pengumuman Akademik' and date, got: %s", replyPengumuman)
 	}
 
 	// 3. /rekap

@@ -79,7 +79,39 @@ func TestAcademicManager_Announcements(t *testing.T) {
 		t.Errorf("expected HTML tags in isi_pengumuman to be stripped, got: %s", txt)
 	}
 
-	// 4. Test empty announcements
+	if !strings.Contains(txt, "📅 01-08-2026") || !strings.Contains(txt, "📅 16-08-2026") {
+		t.Errorf("expected date in output, got: %s", txt)
+	}
+
+	// 4. Test API payload using waktu_indonesia and isi fields
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[
+			{
+				"id": 10,
+				"judul": "Wisuda Ke-50",
+				"isi": "Pelaksanaan wisuda semester genap.",
+				"waktu_indonesia": "20-09-2026 09:00",
+				"is_important": 0,
+				"is_pinned": 0
+			}
+		]`))
+	}))
+	defer apiServer.Close()
+
+	apiAM := NewAcademicManager(client, apiServer.URL, 5*time.Minute)
+	apiTxt, err := apiAM.FormatAnnouncementsText(ctx)
+	if err != nil {
+		t.Fatalf("apiAM FormatAnnouncementsText error: %v", err)
+	}
+	if !strings.Contains(apiTxt, "📅 20-09-2026 09:00") {
+		t.Errorf("expected waktu_indonesia date in output, got: %s", apiTxt)
+	}
+	if !strings.Contains(apiTxt, "Pelaksanaan wisuda semester genap.") {
+		t.Errorf("expected isi in output, got: %s", apiTxt)
+	}
+
+	// 5. Test empty announcements
 	emptyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`[]`))
@@ -95,7 +127,7 @@ func TestAcademicManager_Announcements(t *testing.T) {
 		t.Errorf("expected empty announcement message, got: %s", emptyTxt)
 	}
 
-	// 5. Test 401 Unauthorized
+	// 6. Test 401 Unauthorized
 	unauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 	}))

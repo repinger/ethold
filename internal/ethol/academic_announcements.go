@@ -14,10 +14,26 @@ import (
 type AnnouncementItem struct {
 	ID               int    `json:"id"`
 	Judul            string `json:"judul"`
+	Isi              string `json:"isi"`
 	IsiPengumuman    string `json:"isi_pengumuman"`
+	WaktuIndonesia   string `json:"waktu_indonesia"`
 	TanggalIndonesia string `json:"tanggal_indonesia"`
 	IsImportant      int    `json:"is_important"`
 	IsPinned         int    `json:"is_pinned"`
+}
+
+func (a AnnouncementItem) ItemTime() string {
+	if a.WaktuIndonesia != "" {
+		return a.WaktuIndonesia
+	}
+	return a.TanggalIndonesia
+}
+
+func (a AnnouncementItem) ItemContent() string {
+	if a.Isi != "" {
+		return a.Isi
+	}
+	return a.IsiPengumuman
 }
 
 func (am *AcademicManager) GetAnnouncements(ctx context.Context) ([]AnnouncementItem, error) {
@@ -105,12 +121,12 @@ func (am *AcademicManager) FormatAnnouncementsText(ctx context.Context) (string,
 		}
 
 		judul := html.EscapeString(item.Judul)
-		tgl := html.EscapeString(item.TanggalIndonesia)
+		tgl := html.EscapeString(item.ItemTime())
 		if tgl == "" {
 			tgl = "-"
 		}
 
-		cleanIsi := stripHTMLTags(item.IsiPengumuman)
+		cleanIsi := stripHTMLTags(item.ItemContent())
 		if len(cleanIsi) > 250 {
 			cleanIsi = cleanIsi[:250] + "..."
 		}
