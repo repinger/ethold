@@ -286,6 +286,7 @@ This file interfaces with the Telegram Bot API.
 - `(tn *TelegramNotifier) SendMessageIDs(ctx context.Context, text string) ([]int64, error)`: Sends formatted message chunks and returns their message IDs.
 - `(tn *TelegramNotifier) SendMessageIDsWithMarkup(ctx context.Context, text string, markup any) ([]int64, error)`: Sends formatted message chunks with optional Telegram reply markup attached to the final chunk.
 - `(tn *TelegramNotifier) SetReplyKeyboard(buttons [][]string)`: Configures a persistent custom keyboard (`ReplyKeyboardMarkup`) attached to interactive command replies, with automatic alias routing for friendly labels.
+- `(tn *TelegramNotifier) SetInlineKeyboard(buttons [][]InlineButton)`: Configures an interactive inline keyboard (`InlineKeyboardMarkup`) attached to command replies, sending slash commands via `callback_query` without user message echoes.
 - `(tn *TelegramNotifier) DeleteMessages(ctx context.Context, messageIDs []int64) error`: Deletes messages in batches of up to 100 using Telegram's `deleteMessages` endpoint.
 - `(tn *TelegramNotifier) NotifyPresenceSuccess(ctx, course, lecturer, key, msg) error`: Sends formatted attendance alerts.
 - `(tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) error`: Sends server outage notification.

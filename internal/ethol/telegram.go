@@ -113,6 +113,15 @@ func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *Te
 	}
 }
 
+type InlineButton struct {
+	Text string `json:"text"`
+	Data string `json:"callback_data"`
+}
+
+type tgInlineKeyboardMarkup struct {
+	InlineKeyboard [][]InlineButton `json:"inline_keyboard"`
+}
+
 type tgReplyKeyboardMarkup struct {
 	Keyboard       [][]tgKeyboardButton `json:"keyboard"`
 	ResizeKeyboard bool                 `json:"resize_keyboard"`
@@ -149,6 +158,18 @@ func (tn *TelegramNotifier) SetReplyKeyboard(buttons [][]string) {
 		Keyboard:       keyboard,
 		ResizeKeyboard: true,
 		IsPersistent:   true,
+	}
+}
+
+func (tn *TelegramNotifier) SetInlineKeyboard(buttons [][]InlineButton) {
+	tn.markupMu.Lock()
+	defer tn.markupMu.Unlock()
+	if len(buttons) == 0 {
+		tn.replyMarkup = nil
+		return
+	}
+	tn.replyMarkup = &tgInlineKeyboardMarkup{
+		InlineKeyboard: buttons,
 	}
 }
 
@@ -496,15 +517,27 @@ type tgChat struct {
 	ID int64 `json:"id"`
 }
 
+type tgUser struct {
+	ID int64 `json:"id"`
+}
+
 type tgMessage struct {
 	MessageID int64  `json:"message_id"`
 	Chat      tgChat `json:"chat"`
 	Text      string `json:"text"`
 }
 
+type tgCallbackQuery struct {
+	ID      string     `json:"id"`
+	From    tgUser     `json:"from"`
+	Message *tgMessage `json:"message,omitempty"`
+	Data    string     `json:"data"`
+}
+
 type tgUpdate struct {
-	UpdateID int64      `json:"update_id"`
-	Message  *tgMessage `json:"message"`
+	UpdateID      int64            `json:"update_id"`
+	Message       *tgMessage       `json:"message,omitempty"`
+	CallbackQuery *tgCallbackQuery `json:"callback_query,omitempty"`
 }
 
 type tgUpdatesResponse struct {
@@ -594,6 +627,36 @@ func parseCommand(text string) string {
 	return ""
 }
 
+func (tn *TelegramNotifier) answerCallbackQuery(ctx context.Context, queryID string) error {
+	if tn.token == "" || queryID == "" {
+		return nil
+	}
+	endpoint := fmt.Sprintf("%s/bot%s/answerCallbackQuery", tn.baseURL, tn.token)
+	payload := map[string]string{
+		"callback_query_id": queryID,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return tn.sanitizeError(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	hc := tn.client
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return tn.sanitizeError(err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
 func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler func(ctx context.Context, cmd string) string) (int64, error) {
 	if tn.token == "" || tn.chatID == "" {
 		return offset, nil
@@ -638,10 +701,31 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 		if u.UpdateID >= nextOffset {
 			nextOffset = u.UpdateID + 1
 		}
-		if u.Message == nil {
+
+		var (
+			rawChatID  int64
+			rawText    string
+			userMsgID  int64
+			callbackID string
+		)
+
+		if u.Message != nil {
+			rawChatID = u.Message.Chat.ID
+			rawText = u.Message.Text
+			userMsgID = u.Message.MessageID
+		} else if u.CallbackQuery != nil {
+			if u.CallbackQuery.Message != nil {
+				rawChatID = u.CallbackQuery.Message.Chat.ID
+			} else {
+				rawChatID = u.CallbackQuery.From.ID
+			}
+			rawText = u.CallbackQuery.Data
+			callbackID = u.CallbackQuery.ID
+		} else {
 			continue
 		}
-		if (tn.chatIDInt != 0 && u.Message.Chat.ID != tn.chatIDInt) || (tn.chatIDInt == 0 && strconv.FormatInt(u.Message.Chat.ID, 10) != tn.chatID) {
+
+		if (tn.chatIDInt != 0 && rawChatID != tn.chatIDInt) || (tn.chatIDInt == 0 && strconv.FormatInt(rawChatID, 10) != tn.chatID) {
 			now := time.Now()
 			tn.unauthMu.Lock()
 			shouldLog := tn.lastUnauthLog.IsZero() || now.Sub(tn.lastUnauthLog) >= 5*time.Second
@@ -650,12 +734,19 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			}
 			tn.unauthMu.Unlock()
 			if shouldLog {
-				slog.Warn("Ignoring Telegram command from unauthorized chat", "chat_id", u.Message.Chat.ID)
+				slog.Warn("Ignoring Telegram command from unauthorized chat", "chat_id", rawChatID)
 			}
-			devLog("Telegram message from unauthorized chat", "chat_id", u.Message.Chat.ID, "text", u.Message.Text)
+			devLog("Telegram message from unauthorized chat", "chat_id", rawChatID, "text", rawText)
 			continue
 		}
-		cmd := parseCommand(u.Message.Text)
+
+		if callbackID != "" {
+			ackCtx, ackCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			_ = tn.answerCallbackQuery(ackCtx, callbackID)
+			ackCancel()
+		}
+
+		cmd := parseCommand(rawText)
 		if cmd == "" {
 			continue
 		}
@@ -663,7 +754,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			allowed, warnAllowed := tn.rateLimiter.Allow(batchArrival, 5*time.Second)
 			if !allowed {
 				slog.Warn("Telegram command rate limited", "cmd", cmd)
-				devLog("Telegram command rate limited", "chat_id", u.Message.Chat.ID, "cmd", cmd)
+				devLog("Telegram command rate limited", "chat_id", rawChatID, "cmd", cmd)
 				if warnAllowed {
 					_ = tn.SendMessage(ctx, "⏳ <b>Terlalu banyak perintah.</b> Harap tunggu beberapa detik.")
 				}
@@ -702,12 +793,12 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 				toDelete = append(toDelete, rec.replyMsgIDs...)
 			}
 			tn.cmdHistory = append(tn.cmdHistory[:0], commandMessageRecord{
-				userMsgID:   u.Message.MessageID,
+				userMsgID:   userMsgID,
 				replyMsgIDs: replyIDs,
 			})
 		} else {
 			tn.cmdHistory = append(tn.cmdHistory, commandMessageRecord{
-				userMsgID:   u.Message.MessageID,
+				userMsgID:   userMsgID,
 				replyMsgIDs: replyIDs,
 			})
 		}
@@ -726,7 +817,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			}(toDelete)
 		}
 
-		devLogTelegramCommand(u.Message.Chat.ID, cmd, u.Message.Text, time.Since(cmdStart), len(reply), sendErr)
+		devLogTelegramCommand(rawChatID, cmd, rawText, time.Since(cmdStart), len(reply), sendErr)
 	}
 
 	return nextOffset, nil

@@ -1278,3 +1278,260 @@ func TestTelegramNotifier_PollOnce_TextAlias(t *testing.T) {
 	}
 }
 
+func TestTelegramNotifier_InlineKeyboard(t *testing.T) {
+	var (
+		mu          sync.Mutex
+		lastPayload map[string]any
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			resp := tgUpdatesResponse{
+				Ok: true,
+				Result: []tgUpdate{
+					{
+						UpdateID: 1,
+						Message: &tgMessage{
+							MessageID: 10,
+							Chat:      tgChat{ID: 999},
+							Text:      "/help",
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		case "/bot123/sendMessage":
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			mu.Lock()
+			lastPayload = payload
+			mu.Unlock()
+			w.Write([]byte(`{"ok":true,"result":{"message_id":100}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	buttons := [][]InlineButton{
+		{{Text: "📅 Jadwal", Data: "/jadwal"}, {Text: "📝 Tugas", Data: "/tugas"}},
+		{{Text: "ℹ️ Status", Data: "/status"}, {Text: "❓ Bantuan", Data: "/help"}},
+	}
+	tn.SetInlineKeyboard(buttons)
+
+	// 1. Interactive reply in PollOnce should include inline_keyboard markup
+	handler := func(ctx context.Context, cmd string) string {
+		return "help menu"
+	}
+	_, err = tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+
+	mu.Lock()
+	markup, ok := lastPayload["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected reply_markup in PollOnce payload, got %v", lastPayload)
+	}
+	inlineRows, ok := markup["inline_keyboard"].([]any)
+	if !ok || len(inlineRows) != 2 {
+		t.Fatalf("expected 2 inline keyboard rows, got %v", markup["inline_keyboard"])
+	}
+	row0 := inlineRows[0].([]any)
+	btn0 := row0[0].(map[string]any)
+	btn1 := row0[1].(map[string]any)
+	if btn0["text"] != "📅 Jadwal" || btn0["callback_data"] != "/jadwal" {
+		t.Errorf("unexpected button 0 in row 0: %v", btn0)
+	}
+	if btn1["text"] != "📝 Tugas" || btn1["callback_data"] != "/tugas" {
+		t.Errorf("unexpected button 1 in row 0: %v", btn1)
+	}
+	lastPayload = nil
+	mu.Unlock()
+
+	// 2. Clear inline keyboard and verify reply markup is omitted
+	tn.SetInlineKeyboard(nil)
+	_, err = tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+
+	mu.Lock()
+	if _, ok := lastPayload["reply_markup"]; ok {
+		t.Errorf("expected reply_markup to be omitted after SetInlineKeyboard(nil), got %v", lastPayload["reply_markup"])
+	}
+	mu.Unlock()
+}
+
+func TestTelegramNotifier_PollOnce_CallbackQuery(t *testing.T) {
+	var (
+		mu              sync.Mutex
+		answeredQueryID string
+		lastHandledCmd  string
+		lastSendPayload map[string]any
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			resp := tgUpdatesResponse{
+				Ok: true,
+				Result: []tgUpdate{
+					{
+						UpdateID: 10,
+						CallbackQuery: &tgCallbackQuery{
+							ID:   "cb_query_999",
+							From: tgUser{ID: 999},
+							Message: &tgMessage{
+								MessageID: 50,
+								Chat:      tgChat{ID: 999},
+								Text:      "previous bot menu",
+							},
+							Data: "/jadwal",
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		case "/bot123/answerCallbackQuery":
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			mu.Lock()
+			answeredQueryID, _ = payload["callback_query_id"].(string)
+			mu.Unlock()
+			w.Write([]byte(`{"ok":true,"result":true}`))
+		case "/bot123/sendMessage":
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			mu.Lock()
+			lastSendPayload = payload
+			mu.Unlock()
+			w.Write([]byte(`{"ok":true,"result":{"message_id":51}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	handler := func(ctx context.Context, cmd string) string {
+		mu.Lock()
+		lastHandledCmd = cmd
+		mu.Unlock()
+		return "jadwal response"
+	}
+
+	nextOffset, err := tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+	if nextOffset != 11 {
+		t.Errorf("expected nextOffset to be 11, got %d", nextOffset)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if answeredQueryID != "cb_query_999" {
+		t.Errorf("expected answerCallbackQuery with cb_query_999, got %q", answeredQueryID)
+	}
+	if lastHandledCmd != "/jadwal" {
+		t.Errorf("expected handled cmd /jadwal, got %q", lastHandledCmd)
+	}
+	if lastSendPayload == nil || lastSendPayload["text"] != "jadwal response" {
+		t.Errorf("expected reply message 'jadwal response', got %v", lastSendPayload)
+	}
+}
+
+func TestTelegramNotifier_PollOnce_CallbackQuery_Unauthorized(t *testing.T) {
+	var (
+		mu              sync.Mutex
+		answeredQueryID string
+		handlerCalled   bool
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			resp := tgUpdatesResponse{
+				Ok: true,
+				Result: []tgUpdate{
+					{
+						UpdateID: 15,
+						CallbackQuery: &tgCallbackQuery{
+							ID:   "cb_unauth",
+							From: tgUser{ID: 777}, // unauthorized chat/user
+							Message: &tgMessage{
+								MessageID: 50,
+								Chat:      tgChat{ID: 777},
+								Text:      "previous bot menu",
+							},
+							Data: "/jadwal",
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		case "/bot123/answerCallbackQuery":
+			var payload map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			mu.Lock()
+			answeredQueryID, _ = payload["callback_query_id"].(string)
+			mu.Unlock()
+			w.Write([]byte(`{"ok":true,"result":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	handler := func(ctx context.Context, cmd string) string {
+		mu.Lock()
+		handlerCalled = true
+		mu.Unlock()
+		return "should not be called"
+	}
+
+	_, err = tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if handlerCalled {
+		t.Errorf("expected handler not to be called for unauthorized callback query")
+	}
+	if answeredQueryID != "" {
+		t.Errorf("expected unauthorized callback query not to be answered, got %q", answeredQueryID)
+	}
+}
+

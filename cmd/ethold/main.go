@@ -164,18 +164,18 @@ func run() error {
 
 	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
 		if cfg.AutoPresence {
-			notifier.SetReplyKeyboard([][]string{
-				{"📅 Jadwal", "📝 Tugas"},
-				{"👥 Presensi Kelas", "📊 Rekap"},
-				{"⚡ Scan Presensi", "📌 Hari Ini"},
-				{"ℹ️ Status", "❓ Bantuan"},
+			notifier.SetInlineKeyboard([][]ethol.InlineButton{
+				{{Text: "📅 Jadwal", Data: "/jadwal"}, {Text: "📝 Tugas", Data: "/tugas"}},
+				{{Text: "👥 Presensi Kelas", Data: "/presensi_kelas"}, {Text: "📊 Rekap", Data: "/rekap"}},
+				{{Text: "⚡ Scan Presensi", Data: "/check"}, {Text: "📌 Hari Ini", Data: "/today"}},
+				{{Text: "ℹ️ Status", Data: "/status"}, {Text: "❓ Bantuan", Data: "/help"}},
 			})
 		} else {
-			notifier.SetReplyKeyboard([][]string{
-				{"📅 Jadwal", "📝 Tugas"},
-				{"👥 Presensi Kelas", "📊 Rekap"},
-				{"📚 Materi", "📢 Pengumuman"},
-				{"ℹ️ Status", "❓ Bantuan"},
+			notifier.SetInlineKeyboard([][]ethol.InlineButton{
+				{{Text: "📅 Jadwal", Data: "/jadwal"}, {Text: "📝 Tugas", Data: "/tugas"}},
+				{{Text: "👥 Presensi Kelas", Data: "/presensi_kelas"}, {Text: "📊 Rekap", Data: "/rekap"}},
+				{{Text: "📚 Materi", Data: "/materi"}, {Text: "📢 Pengumuman", Data: "/pengumuman"}},
+				{{Text: "ℹ️ Status", Data: "/status"}, {Text: "❓ Bantuan", Data: "/help"}},
 			})
 		}
 		go notifier.StartCommandPoller(ctx, scanner.HandleTelegramCommand)

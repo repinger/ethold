@@ -10,8 +10,8 @@ Commands can include bot mention suffixes (for example, `/status@my_bot`).
 The command parser removes these suffixes before execution.
 Incoming commands are throttled via an idle-aware token bucket (burst: 3, refill: 1 token/second during idle wait time, with a 5-second warning cooldown). Elapsed command execution time is excluded from token replenishment to prevent burst leakage during slow network requests. Outgoing messages are automatically split across multiple messages if exceeding 4,000 characters.
 Interactive command interactions are limited to a 3-command batch window. Upon receiving a 4th command, all previous user commands and bot responses in the cycle are purged asynchronously in the background using Telegram's `deleteMessages` API.
-Command replies automatically attach a persistent custom keyboard (`ReplyKeyboardMarkup` with `is_persistent: true` and `resize_keyboard: true`) containing interactive labels (e.g. `📅 Jadwal`, `📝 Tugas`, `👥 Presensi Kelas`, `📊 Rekap`, `⚡ Scan Presensi`, `📌 Hari Ini`, `ℹ️ Status`, `❓ Bantuan`) for 1-tap command execution.
-The keyboard stays pinned in the Telegram client UI across message deletion cycles.
+Command replies automatically attach an interactive inline keyboard (`InlineKeyboardMarkup`) containing clean action buttons (e.g. `📅 Jadwal`, `📝 Tugas`, `👥 Presensi Kelas`, `📊 Rekap`, `⚡ Scan Presensi`, `📌 Hari Ini`, `ℹ️ Status`, `❓ Bantuan`) that transmit slash commands via background `callback_query` without posting user message bubbles into the chat.
+In addition, persistent custom reply keyboards (`ReplyKeyboardMarkup`) remain supported via `SetReplyKeyboard`.
 Additionally, all bot commands support human-friendly text aliases (with or without emoji, plain lowercase words, case-insensitive, e.g. `jadwal`, `tugas`, `ujian`, `matkul`, `whoami`, `relogin`).
 
 ---
