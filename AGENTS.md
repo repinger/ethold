@@ -21,6 +21,12 @@ go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./... # dev build dead c
 
 Linter config at `.golangci.yml`. Tests use `t.TempDir()` for isolation; no external services or fixtures required.
 
+CI runs both default and `-tags dev` builds for tests, lint, and `go build`. Always verify both.
+
+## Build tags
+
+The `dev` build tag enables verbose dev-only logging (`dev_log.go` / `dev_log_release.go` pair). The release build stubs these out. CI tests both configurations. When adding build-tagged code, provide both `dev` and `!dev` files.
+
 ## Structure
 
 ```
@@ -44,6 +50,8 @@ internal/ethol/                  # all domain code (flat, single package)
   academic_notif.go         # notification polling and mark-read
   debug.go                  # /debug Telegram command, runtime diagnostics
   log.go                    # pretty CLI log handler with color support
+  dev_log.go               # dev-only verbose logging (build tag: dev)
+  dev_log_release.go       # no-op stubs for release builds (build tag: !dev)
 
   state.go       # atomic JSON persistence (attended_keys.json)
   telegram.go    # Telegram Bot API (sendMessage, long-poll getUpdates)
@@ -68,6 +76,8 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
   - Do not leave unused production symbols behind; code solely used by tests must either move to `*_test.go` or be eliminated.
 - All code in one flat package under `internal/ethol` — no sub-packages
 - Config via `.env` file (custom parser, not third-party); see `.env.example`
+  - Env vars: `ETHOL_EMAIL`, `ETHOL_PASSWORD`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`, `ETHOL_AUTO_PRESENCE`
+  - CLI flags (`-username`, `-password`, `-telegram-token`, `-telegram-chat-id`) override `.env` values
 - State persisted as atomic JSON writes to `attended_keys.json`
 - Docker: `docker compose up -d` (volume for state persistence at `/app/data/`)
 - Documentation maintenance: when modifying code that affects behavior, APIs, CLI flags, Telegram commands, configuration, or architecture described in `docs/`, update the affected documentation files in the same PR/commit series.
@@ -78,3 +88,5 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
 - Academic logic is split across domain files (`academic_*.go`); test files match 1:1 with source files (`academic_*_test.go`). Run the full test suite when modifying shared cache structures.
 - The HTTP client uses a custom `User-Agent` transport and shared cookie jar — auth state is implicit in the client, not passed explicitly.
 - `scheduler.go` hardcodes WIB (UTC+7) timezone; time-dependent tests should account for this.
+- `sloglint` enforces key-value only args, static messages, no mixed args — `slog.Info("msg", "key", val)` not `slog.Info(fmt.Sprintf(...))`.
+- Every `//nolint` directive requires an explanation and specific linter name.
