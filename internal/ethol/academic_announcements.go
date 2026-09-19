@@ -109,15 +109,21 @@ func (am *AcademicManager) FormatAnnouncementsText(ctx context.Context) (string,
 	}
 
 	var sb strings.Builder
+	sb.Grow(limit * 256)
 	sb.WriteString(fmt.Sprintf("📢 <b>PENGUMUMAN KAMPUS (%d)</b>\n\n", len(items)))
 
 	for i := 0; i < limit; i++ {
 		item := items[i]
-		badge := ""
+		var badges []string
 		if item.IsPinned == 1 {
-			badge = "📌 [PINNED] "
-		} else if item.IsImportant == 1 {
-			badge = "🚨 [PENTING] "
+			badges = append(badges, "📌 [PINNED]")
+		}
+		if item.IsImportant == 1 {
+			badges = append(badges, "🚨 [PENTING]")
+		}
+		badgeStr := ""
+		if len(badges) > 0 {
+			badgeStr = strings.Join(badges, " ") + " "
 		}
 
 		judul := html.EscapeString(item.Judul)
@@ -127,14 +133,15 @@ func (am *AcademicManager) FormatAnnouncementsText(ctx context.Context) (string,
 		}
 
 		cleanIsi := stripHTMLTags(item.ItemContent())
-		if len(cleanIsi) > 250 {
-			cleanIsi = cleanIsi[:250] + "..."
+		runes := []rune(cleanIsi)
+		if len(runes) > 250 {
+			cleanIsi = string(runes[:250]) + "..."
 		}
 		cleanIsi = html.EscapeString(cleanIsi)
 
-		sb.WriteString(fmt.Sprintf("%d. %s<b>%s</b>\n   📅 %s\n", i+1, badge, judul, tgl))
+		sb.WriteString(fmt.Sprintf("• %s<b>%s</b>\n  📅 %s\n", badgeStr, judul, tgl))
 		if cleanIsi != "" {
-			sb.WriteString(fmt.Sprintf("   %s\n", cleanIsi))
+			sb.WriteString(fmt.Sprintf("  <i>%s</i>\n", cleanIsi))
 		}
 		if i < limit-1 {
 			sb.WriteString("\n")
@@ -150,6 +157,7 @@ func (am *AcademicManager) FormatAnnouncementsText(ctx context.Context) (string,
 
 func stripHTMLTags(s string) string {
 	var b strings.Builder
+	b.Grow(len(s))
 	inTag := false
 	for _, r := range s {
 		switch {
@@ -162,5 +170,10 @@ func stripHTMLTags(s string) string {
 			b.WriteRune(r)
 		}
 	}
-	return strings.Join(strings.Fields(b.String()), " ")
+	unescaped := html.UnescapeString(b.String())
+	cleaned := strings.Join(strings.Fields(unescaped), " ")
+	for _, punct := range []string{".", ",", "!", "?", ";", ":"} {
+		cleaned = strings.ReplaceAll(cleaned, " "+punct, punct)
+	}
+	return cleaned
 }

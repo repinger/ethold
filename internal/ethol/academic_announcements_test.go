@@ -72,8 +72,14 @@ func TestAcademicManager_Announcements(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FormatAnnouncementsText error: %v", err)
 	}
-	if !strings.Contains(txt, "[PINNED]") || !strings.Contains(txt, "Pengisian KRS") || !strings.Contains(txt, "Libur Nasional") {
+	if !strings.Contains(txt, "[PINNED]") || !strings.Contains(txt, "[PENTING]") || !strings.Contains(txt, "Pengisian KRS") || !strings.Contains(txt, "Libur Nasional") {
 		t.Errorf("unexpected FormatAnnouncementsText output:\n%s", txt)
+	}
+	if !strings.Contains(txt, "• 📌 [PINNED] 🚨 [PENTING] <b>Pengisian KRS</b>") {
+		t.Errorf("expected combined pinned and important badges on bullet line, got:\n%s", txt)
+	}
+	if !strings.Contains(txt, "<i>Kampus libur pada tanggal 17 Agustus.</i>") {
+		t.Errorf("expected italicized clean content, got:\n%s", txt)
 	}
 	if strings.Contains(txt, "<p>") || strings.Contains(txt, "<b>") && !strings.Contains(txt, "<b>Libur") {
 		t.Errorf("expected HTML tags in isi_pengumuman to be stripped, got: %s", txt)
@@ -149,11 +155,51 @@ func TestStripHTMLTags(t *testing.T) {
 		{"<p>Hello <b>World</b></p>", "Hello World"},
 		{"Line 1<br/>Line 2", "Line 1 Line 2"},
 		{"   Lots   of   spaces   ", "Lots of spaces"},
+		{"&lt;b&gt;bold text&lt;/b&gt;", "<b>bold text</b>"},
+		{"KRS &amp; MBKM", "KRS & MBKM"},
+		{"Kata1&nbsp;Kata2", "Kata1 Kata2"},
+		{"<b>17 Agustus</b>.", "17 Agustus."},
+		{"Halo, <b>teman</b>!", "Halo, teman!"},
 	}
 	for _, tc := range cases {
 		got := stripHTMLTags(tc.input)
 		if got != tc.expected {
 			t.Errorf("stripHTMLTags(%q) = %q, expected %q", tc.input, got, tc.expected)
 		}
+	}
+}
+
+func TestFormatAnnouncementsText_LongRuneTruncation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Long text with multi-byte unicode characters (e.g. Japanese or accents)
+		longContent := strings.Repeat("学", 300)
+		w.Write([]byte(`[
+			{
+				"id": 99,
+				"judul": "Pengumuman Panjang",
+				"isi": "` + longContent + `",
+				"waktu_indonesia": "01-01-2026",
+				"is_important": 0,
+				"is_pinned": 0
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	txt, err := am.FormatAnnouncementsText(context.Background())
+	if err != nil {
+		t.Fatalf("FormatAnnouncementsText error: %v", err)
+	}
+
+	expectedTruncated := "<i>" + strings.Repeat("学", 250) + "...</i>"
+	if !strings.Contains(txt, expectedTruncated) {
+		t.Errorf("expected 250 rune truncation with ellipsis, got:\n%s", txt)
 	}
 }
