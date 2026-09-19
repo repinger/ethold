@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -82,12 +83,7 @@ func (cm *CourseManager) CachedCount() int {
 func (cm *CourseManager) CachedCourses() []Course {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	if len(cm.cache) == 0 {
-		return nil
-	}
-	courses := make([]Course, len(cm.cache))
-	copy(courses, cm.cache)
-	return courses
+	return cm.cache
 }
 
 func (cm *CourseManager) CachedActivePeriod() (int, int, bool) {
@@ -148,7 +144,10 @@ func (cm *CourseManager) refreshLocked(ctx context.Context) ([]Course, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch auth config: %w", err)
 	}
-	defer respConf.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(respConf.Body, 4096))
+		_ = respConf.Body.Close()
+	}()
 
 	tahun := 0
 	semester := 0
@@ -157,7 +156,7 @@ func (cm *CourseManager) refreshLocked(ctx context.Context) ([]Course, error) {
 	}
 	if respConf.StatusCode == http.StatusOK {
 		var conf authConfigResponse
-		if err := json.NewDecoder(respConf.Body).Decode(&conf); err == nil {
+		if err := json.NewDecoder(io.LimitReader(respConf.Body, 64*1024)).Decode(&conf); err == nil {
 			tahun = parseCount(conf.TahunAktif)
 			semester = parseCount(conf.SemesterAktif)
 		}
@@ -174,7 +173,10 @@ func (cm *CourseManager) refreshLocked(ctx context.Context) ([]Course, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch kuliah: %w", err)
 	}
-	defer respCourses.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(respCourses.Body, 4096))
+		_ = respCourses.Body.Close()
+	}()
 
 	if respCourses.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
@@ -184,7 +186,7 @@ func (cm *CourseManager) refreshLocked(ctx context.Context) ([]Course, error) {
 	}
 
 	var courses []Course
-	if err := json.NewDecoder(respCourses.Body).Decode(&courses); err != nil {
+	if err := json.NewDecoder(io.LimitReader(respCourses.Body, 512*1024)).Decode(&courses); err != nil {
 		return nil, fmt.Errorf("decode kuliah: %w", err)
 	}
 
