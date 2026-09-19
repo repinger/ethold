@@ -568,6 +568,61 @@ func (tn *TelegramNotifier) DeleteMessages(ctx context.Context, messageIDs []int
 	return nil
 }
 
+type tgSendChatActionPayload struct {
+	ChatID          string `json:"chat_id"`
+	Action          string `json:"action"`
+	MessageThreadID int64  `json:"message_thread_id,omitempty"`
+}
+
+func (tn *TelegramNotifier) SendChatAction(ctx context.Context, action string, threadID int64) error {
+	if tn.token == "" || tn.chatID == "" {
+		return nil
+	}
+	if action == "" {
+		action = "typing"
+	}
+
+	payload := tgSendChatActionPayload{
+		ChatID:          tn.chatID,
+		Action:          action,
+		MessageThreadID: threadID,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal sendChatAction payload: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("%s/bot%s/sendChatAction", tn.baseURL, tn.token)
+
+	client := tn.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return tn.sanitizeError(fmt.Errorf("create sendChatAction req: %w", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return tn.sanitizeError(fmt.Errorf("send sendChatAction request: %w", err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		errText := strings.TrimSpace(string(respBody))
+		if errText != "" {
+			return tn.sanitizeError(fmt.Errorf("telegram sendChatAction api error: HTTP %d: %s", resp.StatusCode, errText))
+		}
+		return fmt.Errorf("telegram sendChatAction api error: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
 type tgChat struct {
 	ID int64 `json:"id"`
 }
@@ -858,6 +913,27 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			ackCancel()
 		}
 
+		if userMsgID > 0 {
+			tn.deleteWg.Add(1)
+			go func(mid int64) {
+				defer tn.deleteWg.Done()
+				delCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+				defer cancel()
+				if err := tn.DeleteMessages(delCtx, []int64{mid}); err != nil {
+					slog.Warn("Failed to delete Telegram user command message", "msg_id", mid, "error", err)
+					devLog("Failed to delete Telegram user command message", "error", err)
+				}
+			}(userMsgID)
+		}
+
+		tn.deleteWg.Add(1)
+		go func(threadID int64) {
+			defer tn.deleteWg.Done()
+			actionCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = tn.SendChatAction(actionCtx, "typing", threadID)
+		}(targetThreadID)
+
 		cmdStart := time.Now()
 		cmdCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 
@@ -870,13 +946,14 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			tn.markupMu.RUnlock()
 
 			var toDelete []int64
-			if userMsgID > 0 {
-				toDelete = append(toDelete, userMsgID)
-			}
 
 			targetEditID := int64(0)
 			if u.CallbackQuery != nil && u.CallbackQuery.Message != nil {
 				targetEditID = u.CallbackQuery.Message.MessageID
+			} else {
+				tn.activeMu.Lock()
+				targetEditID = tn.activeMsgID
+				tn.activeMu.Unlock()
 			}
 
 			tn.activeMu.Lock()

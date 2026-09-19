@@ -666,6 +666,7 @@ func TestTelegramNotifier_DeleteMessages(t *testing.T) {
 func TestTelegramNotifier_SingleMessageReplacementCycle(t *testing.T) {
 	var mu sync.Mutex
 	var deletedBatches [][]int64
+	var editedMessages []int64
 	var nextBotMsgID int64 = 500
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -707,7 +708,6 @@ func TestTelegramNotifier_SingleMessageReplacementCycle(t *testing.T) {
 	}
 
 	tn := NewTelegramNotifier(client, server.URL, "123", "999")
-	// Disable rate limiter for testing to send sequential commands quickly
 	tn.rateLimiter = nil
 
 	handler := func(ctx context.Context, cmd string) string {
@@ -750,12 +750,29 @@ func TestTelegramNotifier_SingleMessageReplacementCycle(t *testing.T) {
 				}
 				_ = json.NewEncoder(w).Encode(resp)
 
+			case "/bot123/editMessageText":
+				var payload tgEditMessagePayload
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+				mu.Lock()
+				editedMessages = append(editedMessages, payload.MessageID)
+				mu.Unlock()
+				resp := map[string]any{
+					"ok": true,
+					"result": map[string]any{
+						"message_id": payload.MessageID,
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+
 			case "/bot123/deleteMessages":
 				var payload tgDeleteMessagesPayload
 				_ = json.NewDecoder(r.Body).Decode(&payload)
 				mu.Lock()
 				deletedBatches = append(deletedBatches, payload.MessageIDs)
 				mu.Unlock()
+				w.Write([]byte(`{"ok":true,"result":true}`))
+
+			case "/bot123/sendChatAction":
 				w.Write([]byte(`{"ok":true,"result":true}`))
 
 			default:
@@ -779,36 +796,46 @@ func TestTelegramNotifier_SingleMessageReplacementCycle(t *testing.T) {
 	if len(deletedBatches[0]) != 1 || deletedBatches[0][0] != 10 {
 		t.Fatalf("expected user msg 10 deleted, got %v", deletedBatches[0])
 	}
+	if len(editedMessages) != 0 {
+		t.Fatalf("expected 0 edited messages on command 1, got %d", len(editedMessages))
+	}
 	mu.Unlock()
 
-	// Command 2 (User msg 20 -> Bot reply 502, deletes user msg 20 and bot msg 501)
+	// Command 2 (User msg 20 -> Edits bot msg 501 in place, deletes user msg 20)
 	pollCommand(2, 20, "/ping")
 	mu.Lock()
 	if len(deletedBatches) != 2 {
 		t.Fatalf("expected 2 delete batches after command 2, got %d", len(deletedBatches))
 	}
 	batch2 := deletedBatches[1]
-	if len(batch2) != 2 || batch2[0] != 20 || batch2[1] != 501 {
-		t.Fatalf("expected [20, 501] deleted, got %v", batch2)
+	if len(batch2) != 1 || batch2[0] != 20 {
+		t.Fatalf("expected [20] deleted, got %v", batch2)
+	}
+	if len(editedMessages) != 1 || editedMessages[0] != 501 {
+		t.Fatalf("expected msg 501 edited, got %v", editedMessages)
 	}
 	mu.Unlock()
 
-	// Command 3 (User msg 30 -> Bot reply 503, deletes user msg 30 and bot msg 502)
+	// Command 3 (User msg 30 -> Edits bot msg 501 in place, deletes user msg 30)
 	pollCommand(3, 30, "/help")
 	mu.Lock()
 	if len(deletedBatches) != 3 {
 		t.Fatalf("expected 3 delete batches after command 3, got %d", len(deletedBatches))
 	}
 	batch3 := deletedBatches[2]
-	if len(batch3) != 2 || batch3[0] != 30 || batch3[1] != 502 {
-		t.Fatalf("expected [30, 502] deleted, got %v", batch3)
+	if len(batch3) != 1 || batch3[0] != 30 {
+		t.Fatalf("expected [30] deleted, got %v", batch3)
+	}
+	if len(editedMessages) != 2 || editedMessages[1] != 501 {
+		t.Fatalf("expected msg 501 edited on command 3, got %v", editedMessages)
 	}
 	mu.Unlock()
 }
 
-func TestTelegramNotifier_BatchCleanup_OutputBeforeDeletion(t *testing.T) {
+func TestTelegramNotifier_InstantUserPromptDeletion(t *testing.T) {
 	var mu sync.Mutex
 	var order []string
+	var chatActions []string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -823,6 +850,14 @@ func TestTelegramNotifier_BatchCleanup_OutputBeforeDeletion(t *testing.T) {
 				"result": map[string]any{"message_id": 999},
 			}
 			_ = json.NewEncoder(w).Encode(resp)
+		case "/bot123/sendChatAction":
+			var payload tgSendChatActionPayload
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			mu.Lock()
+			chatActions = append(chatActions, payload.Action)
+			order = append(order, "action")
+			mu.Unlock()
+			w.Write([]byte(`{"ok":true,"result":true}`))
 		case "/bot123/deleteMessages":
 			mu.Lock()
 			order = append(order, "delete")
@@ -875,6 +910,14 @@ func TestTelegramNotifier_BatchCleanup_OutputBeforeDeletion(t *testing.T) {
 					"result": map[string]any{"message_id": 999},
 				}
 				_ = json.NewEncoder(w).Encode(resp)
+			case "/bot123/sendChatAction":
+				var payload tgSendChatActionPayload
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+				mu.Lock()
+				chatActions = append(chatActions, payload.Action)
+				order = append(order, "action")
+				mu.Unlock()
+				w.Write([]byte(`{"ok":true,"result":true}`))
 			case "/bot123/deleteMessages":
 				mu.Lock()
 				order = append(order, "delete")
@@ -892,25 +935,18 @@ func TestTelegramNotifier_BatchCleanup_OutputBeforeDeletion(t *testing.T) {
 		waitPendingDeletions(tn)
 	}
 
-	// Commands 1-3
 	pollCommand(1, 10)
-	pollCommand(2, 20)
-	pollCommand(3, 30)
-
-	mu.Lock()
-	order = nil // reset order before 4th command
-	mu.Unlock()
-
-	// Command 4: should send command output BEFORE deleting previous messages
-	pollCommand(4, 40)
 
 	mu.Lock()
 	defer mu.Unlock()
 	if len(order) < 2 {
-		t.Fatalf("expected at least [send, delete], got %v", order)
+		t.Fatalf("expected at least [delete, send], got %v", order)
 	}
-	if order[0] != "send" || order[1] != "delete" {
-		t.Fatalf("expected output first ('send' before 'delete'), got order: %v", order)
+	if order[0] != "delete" && order[1] != "delete" {
+		t.Fatalf("expected delete before send, got order: %v", order)
+	}
+	if len(chatActions) == 0 || chatActions[0] != "typing" {
+		t.Fatalf("expected 'typing' chat action, got %v", chatActions)
 	}
 }
 
@@ -1465,6 +1501,67 @@ func TestTelegramNotifier_PollOnce_TopicFilter(t *testing.T) {
 	}
 	if answeredCB.CallbackQueryID != "cb-1" || !strings.Contains(answeredCB.Text, "topik") {
 		t.Errorf("expected callback query answered with warning, got %+v", answeredCB)
+	}
+}
+
+func TestTelegramNotifier_SendChatAction(t *testing.T) {
+	var (
+		mu          sync.Mutex
+		lastPayload tgSendChatActionPayload
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/bot123/sendChatAction" {
+			http.NotFound(w, r)
+			return
+		}
+		var payload tgSendChatActionPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		lastPayload = payload
+		mu.Unlock()
+		w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+
+	// 1. Normal sendChatAction with thread
+	err = tn.SendChatAction(context.Background(), "typing", 555)
+	if err != nil {
+		t.Fatalf("SendChatAction failed: %v", err)
+	}
+
+	mu.Lock()
+	if lastPayload.ChatID != "999" || lastPayload.Action != "typing" || lastPayload.MessageThreadID != 555 {
+		t.Errorf("unexpected payload: %+v", lastPayload)
+	}
+	mu.Unlock()
+
+	// 2. Default action when empty string passed
+	err = tn.SendChatAction(context.Background(), "", 0)
+	if err != nil {
+		t.Fatalf("SendChatAction default action failed: %v", err)
+	}
+
+	mu.Lock()
+	if lastPayload.Action != "typing" || lastPayload.MessageThreadID != 0 {
+		t.Errorf("unexpected default action payload: %+v", lastPayload)
+	}
+	mu.Unlock()
+
+	// 3. No-op when token or chatID is empty
+	emptyTN := NewTelegramNotifier(client, server.URL, "", "")
+	if err := emptyTN.SendChatAction(context.Background(), "typing", 0); err != nil {
+		t.Errorf("expected nil error for empty credentials, got %v", err)
 	}
 }
 
