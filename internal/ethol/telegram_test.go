@@ -819,7 +819,7 @@ func TestTelegramNotifier_DeleteMessages(t *testing.T) {
 	}
 }
 
-func TestTelegramNotifier_BatchCleanupCycle(t *testing.T) {
+func TestTelegramNotifier_SingleMessageReplacementCycle(t *testing.T) {
 	var mu sync.Mutex
 	var deletedBatches [][]int64
 	var nextBotMsgID int64 = 500
@@ -926,79 +926,38 @@ func TestTelegramNotifier_BatchCleanupCycle(t *testing.T) {
 		tn.WaitPendingDeletions()
 	}
 
-	// Command 1 (User msg 10 -> Bot reply 501)
+	// Command 1 (User msg 10 -> Bot reply 501, deletes user msg 10)
 	pollCommand(1, 10, "/status")
 	mu.Lock()
-	if len(deletedBatches) != 0 {
-		t.Fatalf("expected 0 delete calls after command 1, got %d", len(deletedBatches))
+	if len(deletedBatches) != 1 {
+		t.Fatalf("expected 1 delete batch after command 1, got %d", len(deletedBatches))
+	}
+	if len(deletedBatches[0]) != 1 || deletedBatches[0][0] != 10 {
+		t.Fatalf("expected user msg 10 deleted, got %v", deletedBatches[0])
 	}
 	mu.Unlock()
 
-	// Command 2 (User msg 20 -> Bot reply 502)
+	// Command 2 (User msg 20 -> Bot reply 502, deletes user msg 20 and bot msg 501)
 	pollCommand(2, 20, "/ping")
 	mu.Lock()
-	if len(deletedBatches) != 0 {
-		t.Fatalf("expected 0 delete calls after command 2, got %d", len(deletedBatches))
+	if len(deletedBatches) != 2 {
+		t.Fatalf("expected 2 delete batches after command 2, got %d", len(deletedBatches))
+	}
+	batch2 := deletedBatches[1]
+	if len(batch2) != 2 || batch2[0] != 20 || batch2[1] != 501 {
+		t.Fatalf("expected [20, 501] deleted, got %v", batch2)
 	}
 	mu.Unlock()
 
-	// Command 3 (User msg 30 -> Bot reply 503)
+	// Command 3 (User msg 30 -> Bot reply 503, deletes user msg 30 and bot msg 502)
 	pollCommand(3, 30, "/help")
 	mu.Lock()
-	if len(deletedBatches) != 0 {
-		t.Fatalf("expected 0 delete calls after command 3, got %d", len(deletedBatches))
+	if len(deletedBatches) != 3 {
+		t.Fatalf("expected 3 delete batches after command 3, got %d", len(deletedBatches))
 	}
-	mu.Unlock()
-
-	// Command 4 (User msg 40 -> Bot reply 504)
-	// Must trigger deletion of commands 1-3: user IDs [10, 20, 30] and bot IDs [501, 502, 503]
-	pollCommand(4, 40, "/whoami")
-	mu.Lock()
-	if len(deletedBatches) != 1 {
-		t.Fatalf("expected 1 delete call after command 4, got %d", len(deletedBatches))
-	}
-	expectedDeleted := []int64{10, 501, 20, 502, 30, 503}
-	if len(deletedBatches[0]) != len(expectedDeleted) {
-		t.Fatalf("expected %d deleted IDs, got %v", len(expectedDeleted), deletedBatches[0])
-	}
-	for i, id := range expectedDeleted {
-		if deletedBatches[0][i] != id {
-			t.Errorf("deleted batch index %d: expected %d, got %d", i, id, deletedBatches[0][i])
-		}
-	}
-	mu.Unlock()
-
-	// Command 5 (User msg 50 -> Bot reply 505) - part of second batch
-	pollCommand(5, 50, "/jadwal")
-	mu.Lock()
-	if len(deletedBatches) != 1 {
-		t.Fatalf("expected still 1 delete call after command 5, got %d", len(deletedBatches))
-	}
-	mu.Unlock()
-
-	// Command 6 (User msg 60 -> Bot reply 606)
-	pollCommand(6, 60, "/courses")
-	mu.Lock()
-	if len(deletedBatches) != 1 {
-		t.Fatalf("expected still 1 delete call after command 6, got %d", len(deletedBatches))
-	}
-	mu.Unlock()
-
-	// Command 7 (User msg 70 -> Bot reply 507)
-	// Must trigger deletion of commands 4-6: user IDs [40, 50, 60] and bot IDs [504, 505, 506]
-	pollCommand(7, 70, "/tugas")
-	mu.Lock()
-	if len(deletedBatches) != 2 {
-		t.Fatalf("expected 2 delete calls after command 7, got %d", len(deletedBatches))
-	}
-	expectedBatch2 := []int64{40, 504, 50, 505, 60, 506}
-	if len(deletedBatches[1]) != len(expectedBatch2) {
-		t.Fatalf("expected %d deleted IDs in batch 2, got %v", len(expectedBatch2), deletedBatches[1])
-	}
-	for i, id := range expectedBatch2 {
-		if deletedBatches[1][i] != id {
-			t.Errorf("deleted batch 2 index %d: expected %d, got %d", i, id, deletedBatches[1][i])
-		}
+	batch3 := deletedBatches[2]
+	if len(batch3) != 2 || batch3[0] != 30 || batch3[1] != 502 {
+		t.Fatalf("expected [30, 502] deleted, got %v", batch3)
 	}
 	mu.Unlock()
 }
@@ -1378,7 +1337,7 @@ func TestTelegramNotifier_PollOnce_CallbackQuery(t *testing.T) {
 		mu              sync.Mutex
 		answeredQueryID string
 		lastHandledCmd  string
-		lastSendPayload map[string]any
+		lastEditPayload map[string]any
 	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1413,16 +1372,16 @@ func TestTelegramNotifier_PollOnce_CallbackQuery(t *testing.T) {
 			answeredQueryID, _ = payload["callback_query_id"].(string)
 			mu.Unlock()
 			w.Write([]byte(`{"ok":true,"result":true}`))
-		case "/bot123/sendMessage":
+		case "/bot123/editMessageText":
 			var payload map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			mu.Lock()
-			lastSendPayload = payload
+			lastEditPayload = payload
 			mu.Unlock()
-			w.Write([]byte(`{"ok":true,"result":{"message_id":51}}`))
+			w.Write([]byte(`{"ok":true,"result":{"message_id":50}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -1459,8 +1418,11 @@ func TestTelegramNotifier_PollOnce_CallbackQuery(t *testing.T) {
 	if lastHandledCmd != "/jadwal" {
 		t.Errorf("expected handled cmd /jadwal, got %q", lastHandledCmd)
 	}
-	if lastSendPayload == nil || lastSendPayload["text"] != "jadwal response" {
-		t.Errorf("expected reply message 'jadwal response', got %v", lastSendPayload)
+	if lastEditPayload == nil || lastEditPayload["text"] != "jadwal response" {
+		t.Errorf("expected edit message 'jadwal response', got %v", lastEditPayload)
+	}
+	if mid, ok := lastEditPayload["message_id"].(float64); !ok || int64(mid) != 50 {
+		t.Errorf("expected edit message_id 50, got %v", lastEditPayload["message_id"])
 	}
 }
 
@@ -1534,4 +1496,99 @@ func TestTelegramNotifier_PollOnce_CallbackQuery_Unauthorized(t *testing.T) {
 		t.Errorf("expected unauthorized callback query not to be answered, got %q", answeredQueryID)
 	}
 }
+
+func TestTelegramNotifier_EditMessageText(t *testing.T) {
+	var (
+		mu          sync.Mutex
+		lastPayload tgEditMessagePayload
+		attempts    int
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/bot123/editMessageText" {
+			http.NotFound(w, r)
+			return
+		}
+		mu.Lock()
+		attempts++
+		curAttempt := attempts
+		mu.Unlock()
+
+		if curAttempt == 1 {
+			// First attempt returns 429
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"ok":false,"error_code":429,"description":"Too Many Requests","parameters":{"retry_after":1}}`))
+			return
+		}
+
+		var payload tgEditMessagePayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		lastPayload = payload
+		mu.Unlock()
+		w.Write([]byte(`{"ok":true,"result":{"message_id":100}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	markup := &tgInlineKeyboardMarkup{
+		InlineKeyboard: [][]InlineButton{
+			{{Text: "btn1", Data: "/btn1"}},
+		},
+	}
+
+	err = tn.EditMessageText(context.Background(), 100, "updated text", markup)
+	if err != nil {
+		t.Fatalf("EditMessageText failed: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if attempts != 2 {
+		t.Errorf("expected 2 attempts due to 429 retry, got %d", attempts)
+	}
+	if lastPayload.MessageID != 100 {
+		t.Errorf("expected MessageID 100, got %d", lastPayload.MessageID)
+	}
+	if lastPayload.Text != "updated text" {
+		t.Errorf("expected Text 'updated text', got %q", lastPayload.Text)
+	}
+	if lastPayload.ReplyMarkup == nil {
+		t.Errorf("expected ReplyMarkup to be present")
+	}
+}
+
+func TestTelegramNotifier_EditMessageText_MessageNotModified(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/bot123/editMessageText" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	err = tn.EditMessageText(context.Background(), 100, "identical text", nil)
+	if err != nil {
+		t.Fatalf("expected message is not modified to return nil, got %v", err)
+	}
+}
+
 
