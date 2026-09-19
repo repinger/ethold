@@ -466,6 +466,16 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 		}
 	}
 
+	if s.academic != nil {
+		s.academic.SweepExpired()
+	}
+
+	s.cmdState.mu.Lock()
+	if !s.cmdState.lastRosterTime.IsZero() && time.Since(s.cmdState.lastRosterTime) >= 20*time.Second {
+		s.cmdState.lastRosterMsg = ""
+	}
+	s.cmdState.mu.Unlock()
+
 	return attendedCount, nil
 }
 

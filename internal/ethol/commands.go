@@ -349,10 +349,13 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return "❌ Fitur presensi kelas tidak tersedia."
 		}
 		s.cmdState.mu.Lock()
-		if !s.cmdState.lastRosterTime.IsZero() && time.Since(s.cmdState.lastRosterTime) < 20*time.Second && s.cmdState.lastRosterMsg != "" {
-			cachedMsg := s.cmdState.lastRosterMsg
-			s.cmdState.mu.Unlock()
-			return cachedMsg
+		if !s.cmdState.lastRosterTime.IsZero() {
+			if time.Since(s.cmdState.lastRosterTime) < 20*time.Second && s.cmdState.lastRosterMsg != "" {
+				cachedMsg := s.cmdState.lastRosterMsg
+				s.cmdState.mu.Unlock()
+				return cachedMsg
+			}
+			s.cmdState.lastRosterMsg = ""
 		}
 		s.cmdState.mu.Unlock()
 

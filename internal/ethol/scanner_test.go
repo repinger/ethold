@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -912,4 +913,168 @@ func TestScanner_OutageNotification_AuthFailure(t *testing.T) {
 		t.Fatalf("expected 2 auth failure alerts after reset, got %d", len(sentMessages))
 	}
 	sentMu.Unlock()
+}
+
+func setupMockScannerWith10Courses(tb testing.TB) (*httptest.Server, *Scanner) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case r.URL.Path == "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `
+					<form id="fm1" action="/cas/login" method="post">
+						<input type="text" name="username" />
+						<input type="password" name="password" />
+					</form>
+				`)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "ETHOL_SESS", Value: "session-ok", Path: "/"})
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case r.URL.Path == "/api/auth/refresh":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/api/auth/validasi-token":
+			w.Write([]byte(`{"nomor":1001,"nama":"Budi","nipnrp":"3120600001"}`))
+		case r.URL.Path == "/api/auth/config":
+			w.Write([]byte(`{"tahun_aktif":2024,"semester_aktif":1}`))
+		case r.URL.Path == "/api/kuliah":
+			var courses []map[string]any
+			for i := 1; i <= 10; i++ {
+				courses = append(courses, map[string]any{
+					"nomor":       100 + i,
+					"jenisSchema": 0,
+					"dosen":       fmt.Sprintf("Dosen %d", i),
+					"matakuliah":  map[string]any{"nama": fmt.Sprintf("Course %d", i)},
+				})
+			}
+			json.NewEncoder(w).Encode(courses)
+		case r.URL.Path == "/api/presensi/aktif-kuliah":
+			w.Write([]byte(`[]`))
+		case r.URL.Path == "/api/jadwal/jadwal-online":
+			w.Write([]byte(`[{"nomor":1,"kuliah":101,"hari":"Senin","jam_awal":"08:00","jam_akhir":"10:00","matakuliah":{"nama":"Course 1"},"dosen":"Dosen 1"}]`))
+		case r.URL.Path == "/api/tugas":
+			w.Write([]byte(`[{"nomor":1,"judul":"Tugas 1","waktu":"2026-09-10 10:00:00","tutup":0,"submission":[]}]`))
+		case r.URL.Path == "/api/materi":
+			w.Write([]byte(`[{"nomor":1,"judul":"Materi 1"}]`))
+		case r.URL.Path == "/api/video":
+			w.Write([]byte(`[]`))
+		case r.URL.Path == "/api/presensi/stat-beranda-mahasiswa":
+			w.Write([]byte(`{"sukses":true,"data":{"totalSesi":16,"rataHadir":100}}`))
+		case r.URL.Path == "/api/presensi/riwayat":
+			w.Write([]byte(`[{"nomor":1,"tanggal":"10-09-2026","waktu":"08:00"}]`))
+		case r.URL.Path == "/api/presensi/get-tanggal-presensi-dosen-per-semester":
+			w.Write([]byte(`[{"waktu_indonesia":"10-09-2026 08:00","tanggal":"10-09-2026"}]`))
+		case r.URL.Path == "/api/presensi/daftar-mahasiswa-hadir-kuliah":
+			w.Write([]byte(`[{"nrp":"3120600001","nama":"Budi"}]`))
+		case r.URL.Path == "/api/presensi/jumlah-mahasiswa-per-kuliah":
+			w.Write([]byte(`{"data":{"jumlah":30}}`))
+		case r.URL.Path == "/api/pengumuman-admin":
+			w.Write([]byte(`[{"id":1,"judul":"Pengumuman","isi":"Isi"}]`))
+		case r.URL.Path == "/api/ujian/daftar-ujian":
+			w.Write([]byte(`[]`))
+		case strings.Contains(r.URL.Path, "/sendMessage"):
+			w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
+		default:
+			w.Write([]byte(`[]`))
+		}
+	}))
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	dir := tb.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	state, err := NewStateManager(statePath)
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "budi", "pass")
+	courses := NewCourseManager(client, server.URL, 5*time.Minute)
+	academic := NewAcademicManager(client, server.URL, 5*time.Minute)
+	presence := NewPresenceEngine(client, server.URL)
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+
+	scanner := NewScanner(auth, courses, presence, academic, state, notifier, 4)
+	scanner.minDelay = 0
+	scanner.maxDelay = 0
+	scanner.minStagger = 0
+	scanner.maxStagger = 0
+
+	return server, scanner
+}
+
+func BenchmarkScanner_ScanOnce_10Courses(b *testing.B) {
+	server, scanner := setupMockScannerWith10Courses(b)
+	defer server.Close()
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for b.Loop() {
+		_, err := scanner.ScanOnce(ctx)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestSoakMemory(t *testing.T) {
+	server, scanner := setupMockScannerWith10Courses(t)
+	defer server.Close()
+	ctx := context.Background()
+
+	commands := []string{"/status", "/jadwal", "/tugas", "/presensi_kelas", "/rekap", "/materi", "/ujian", "/pengumuman", "/debug"}
+
+	// Warmup 5 cycles
+	for i := 0; i < 5; i++ {
+		_, _ = scanner.ScanOnce(ctx)
+		for _, cmd := range commands {
+			_ = scanner.HandleTelegramCommand(ctx, cmd)
+		}
+	}
+
+	runtime.GC()
+	var mStart runtime.MemStats
+	runtime.ReadMemStats(&mStart)
+	goroutinesStart := runtime.NumGoroutine()
+
+	// Soak run: 100 scan cycles + 100 command cycles
+	for i := 0; i < 100; i++ {
+		_, err := scanner.ScanOnce(ctx)
+		if err != nil {
+			t.Fatalf("scan error: %v", err)
+		}
+		for _, cmd := range commands {
+			reply := scanner.HandleTelegramCommand(ctx, cmd)
+			if reply == "" {
+				t.Fatalf("empty reply for command %s", cmd)
+			}
+		}
+	}
+
+	runtime.GC()
+	var mEnd runtime.MemStats
+	runtime.ReadMemStats(&mEnd)
+	goroutinesEnd := runtime.NumGoroutine()
+
+	t.Logf("=== SOAK TEST MEMORY REPORT ===")
+	t.Logf("HeapInuse:   start=%d B (%.2f KB), end=%d B (%.2f KB), delta=%+d B",
+		mStart.HeapInuse, float64(mStart.HeapInuse)/1024,
+		mEnd.HeapInuse, float64(mEnd.HeapInuse)/1024,
+		int64(mEnd.HeapInuse)-int64(mStart.HeapInuse))
+	t.Logf("HeapAlloc:   start=%d B (%.2f KB), end=%d B (%.2f KB), delta=%+d B",
+		mStart.HeapAlloc, float64(mStart.HeapAlloc)/1024,
+		mEnd.HeapAlloc, float64(mEnd.HeapAlloc)/1024,
+		int64(mEnd.HeapAlloc)-int64(mStart.HeapAlloc))
+	t.Logf("HeapObjects: start=%d, end=%d, delta=%+d",
+		mStart.HeapObjects, mEnd.HeapObjects, int64(mEnd.HeapObjects)-int64(mStart.HeapObjects))
+	t.Logf("Goroutines:  start=%d, end=%d, delta=%+d",
+		goroutinesStart, goroutinesEnd, goroutinesEnd-goroutinesStart)
+	t.Logf("TotalAlloc:  delta=%d B (%.2f MB)",
+		mEnd.TotalAlloc-mStart.TotalAlloc, float64(mEnd.TotalAlloc-mStart.TotalAlloc)/(1024*1024))
 }
