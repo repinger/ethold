@@ -57,6 +57,7 @@ type AcademicManager struct {
 	announcementCache   announcementCacheEntry
 	processedNotifIDs   map[int]struct{} // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
 	processedNotifQueue []int
+	notifHead           int
 }
 
 const (
@@ -91,6 +92,48 @@ func (am *AcademicManager) InvalidateAttendanceCache() {
 	clear(am.attendanceCache)
 }
 
+func (am *AcademicManager) SweepExpired() {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	am.sweepExpiredLocked(time.Now())
+}
+
+func (am *AcademicManager) sweepExpiredLocked(now time.Time) {
+	for k, e := range am.scheduleCache {
+		if now.Sub(e.timestamp) >= am.ttl {
+			delete(am.scheduleCache, k)
+		}
+	}
+	for k, e := range am.taskCache {
+		if now.Sub(e.timestamp) >= am.ttl {
+			delete(am.taskCache, k)
+		}
+	}
+	for k, e := range am.materialCache {
+		if now.Sub(e.timestamp) >= am.ttl {
+			delete(am.materialCache, k)
+		}
+	}
+	for k, e := range am.videoCache {
+		if now.Sub(e.timestamp) >= am.ttl {
+			delete(am.videoCache, k)
+		}
+	}
+	for k, e := range am.attendanceCache {
+		if now.Sub(e.timestamp) >= am.ttl {
+			delete(am.attendanceCache, k)
+		}
+	}
+	for k, e := range am.examCache {
+		if now.Sub(e.timestamp) >= am.ttl {
+			delete(am.examCache, k)
+		}
+	}
+	if !am.announcementCache.timestamp.IsZero() && now.Sub(am.announcementCache.timestamp) >= am.ttl {
+		am.announcementCache = announcementCacheEntry{}
+	}
+}
+
 type AcademicCacheStats struct {
 	SchedulesCount     int
 	TasksCount         int
@@ -105,17 +148,55 @@ type AcademicCacheStats struct {
 func (am *AcademicManager) CacheStats() AcademicCacheStats {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
+	now := time.Now()
+
+	schedCount := 0
+	for _, e := range am.scheduleCache {
+		if now.Sub(e.timestamp) < am.ttl {
+			schedCount++
+		}
+	}
+	taskCount := 0
+	for _, e := range am.taskCache {
+		if now.Sub(e.timestamp) < am.ttl {
+			taskCount++
+		}
+	}
+	matCount := 0
+	for _, e := range am.materialCache {
+		if now.Sub(e.timestamp) < am.ttl {
+			matCount++
+		}
+	}
+	vidCount := 0
+	for _, e := range am.videoCache {
+		if now.Sub(e.timestamp) < am.ttl {
+			vidCount++
+		}
+	}
+	attCount := 0
+	for _, e := range am.attendanceCache {
+		if now.Sub(e.timestamp) < am.ttl {
+			attCount++
+		}
+	}
+	examCount := 0
+	for _, e := range am.examCache {
+		if now.Sub(e.timestamp) < am.ttl {
+			examCount++
+		}
+	}
 	annCount := 0
-	if !am.announcementCache.timestamp.IsZero() && time.Since(am.announcementCache.timestamp) < am.ttl {
+	if !am.announcementCache.timestamp.IsZero() && now.Sub(am.announcementCache.timestamp) < am.ttl {
 		annCount = len(am.announcementCache.items)
 	}
 	return AcademicCacheStats{
-		SchedulesCount:     len(am.scheduleCache),
-		TasksCount:         len(am.taskCache),
-		MaterialsCount:     len(am.materialCache),
-		VideosCount:        len(am.videoCache),
-		AttendanceCount:    len(am.attendanceCache),
-		ExamsCount:         len(am.examCache),
+		SchedulesCount:     schedCount,
+		TasksCount:         taskCount,
+		MaterialsCount:     matCount,
+		VideosCount:        vidCount,
+		AttendanceCount:    attCount,
+		ExamsCount:         examCount,
 		AnnouncementsCount: annCount,
 		ProcessedNotifs:    len(am.processedNotifIDs),
 	}

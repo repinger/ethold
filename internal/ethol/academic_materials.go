@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -42,7 +43,10 @@ func (am *AcademicManager) fetchMaterials(ctx context.Context, c Course) ([]Mate
 	if err != nil {
 		return nil, fmt.Errorf("fetch materi: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
@@ -52,14 +56,16 @@ func (am *AcademicManager) fetchMaterials(ctx context.Context, c Course) ([]Mate
 	}
 
 	var items []MaterialItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
 		return nil, fmt.Errorf("decode materi: %w", err)
 	}
 
 	am.mu.Lock()
+	now := time.Now()
+	am.sweepExpiredLocked(now)
 	am.materialCache[c.Nomor] = materialCacheEntry{
 		items:     items,
-		timestamp: time.Now(),
+		timestamp: now,
 	}
 	am.mu.Unlock()
 
@@ -142,7 +148,10 @@ func (am *AcademicManager) fetchVideos(ctx context.Context, c Course) ([]VideoIt
 	if err != nil {
 		return nil, fmt.Errorf("fetch video: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
@@ -152,14 +161,16 @@ func (am *AcademicManager) fetchVideos(ctx context.Context, c Course) ([]VideoIt
 	}
 
 	var items []VideoItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
 		return nil, fmt.Errorf("decode video: %w", err)
 	}
 
 	am.mu.Lock()
+	now := time.Now()
+	am.sweepExpiredLocked(now)
 	am.videoCache[c.Nomor] = videoCacheEntry{
 		items:     items,
-		timestamp: time.Now(),
+		timestamp: now,
 	}
 	am.mu.Unlock()
 

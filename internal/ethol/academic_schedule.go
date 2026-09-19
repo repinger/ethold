@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"slices"
 	"strconv"
@@ -74,8 +75,7 @@ func (am *AcademicManager) GetSchedule(ctx context.Context, tahun, semester int)
 
 	am.mu.RLock()
 	if entry, ok := am.scheduleCache[key]; ok && time.Since(entry.timestamp) < am.ttl {
-		items := make([]ScheduleItem, len(entry.items))
-		copy(items, entry.items)
+		items := entry.items
 		am.mu.RUnlock()
 		return items, nil
 	}
@@ -91,7 +91,10 @@ func (am *AcademicManager) GetSchedule(ctx context.Context, tahun, semester int)
 	if err != nil {
 		return nil, fmt.Errorf("fetch schedule: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
@@ -101,7 +104,7 @@ func (am *AcademicManager) GetSchedule(ctx context.Context, tahun, semester int)
 	}
 
 	var items []ScheduleItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
 		return nil, fmt.Errorf("decode schedule: %w", err)
 	}
 
@@ -114,15 +117,15 @@ func (am *AcademicManager) GetSchedule(ctx context.Context, tahun, semester int)
 	})
 
 	am.mu.Lock()
+	now := time.Now()
+	am.sweepExpiredLocked(now)
 	am.scheduleCache[key] = scheduleCacheEntry{
 		items:     items,
-		timestamp: time.Now(),
+		timestamp: now,
 	}
 	am.mu.Unlock()
 
-	result := make([]ScheduleItem, len(items))
-	copy(result, items)
-	return result, nil
+	return items, nil
 }
 
 func matchCourse(item ScheduleItem, courses []Course) *Course {

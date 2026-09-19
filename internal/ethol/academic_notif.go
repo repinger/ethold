@@ -51,7 +51,10 @@ func (am *AcademicManager) PollNotifications(
 	if err != nil {
 		return fmt.Errorf("fetch unread count: %w", err)
 	}
-	defer respCheck.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(respCheck.Body, 4096))
+		_ = respCheck.Body.Close()
+	}()
 
 	if respCheck.StatusCode == http.StatusUnauthorized {
 		return ErrUnauthorized
@@ -63,7 +66,7 @@ func (am *AcademicManager) PollNotifications(
 	var countData struct {
 		Jumlah any `json:"jumlah"`
 	}
-	if err := json.NewDecoder(respCheck.Body).Decode(&countData); err != nil {
+	if err := json.NewDecoder(io.LimitReader(respCheck.Body, 64*1024)).Decode(&countData); err != nil {
 		return fmt.Errorf("decode unread count: %w", err)
 	}
 
@@ -81,7 +84,10 @@ func (am *AcademicManager) PollNotifications(
 	if err != nil {
 		return fmt.Errorf("fetch notifications: %w", err)
 	}
-	defer respNotif.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(respNotif.Body, 4096))
+		_ = respNotif.Body.Close()
+	}()
 
 	if respNotif.StatusCode == http.StatusUnauthorized {
 		return ErrUnauthorized
@@ -91,7 +97,7 @@ func (am *AcademicManager) PollNotifications(
 	}
 
 	var items []NotificationItem
-	if err := json.NewDecoder(respNotif.Body).Decode(&items); err != nil {
+	if err := json.NewDecoder(io.LimitReader(respNotif.Body, 512*1024)).Decode(&items); err != nil {
 		return fmt.Errorf("decode notifications: %w", err)
 	}
 
@@ -108,13 +114,13 @@ func (am *AcademicManager) PollNotifications(
 			am.mu.Unlock()
 			continue
 		}
-		if len(am.processedNotifQueue) >= maxNotifHistory {
-			oldest := am.processedNotifQueue[0]
-			delete(am.processedNotifIDs, oldest)
-			copy(am.processedNotifQueue, am.processedNotifQueue[1:])
-			am.processedNotifQueue[len(am.processedNotifQueue)-1] = item.IDNotifikasi
-		} else {
+		if len(am.processedNotifQueue) < maxNotifHistory {
 			am.processedNotifQueue = append(am.processedNotifQueue, item.IDNotifikasi)
+		} else {
+			oldest := am.processedNotifQueue[am.notifHead]
+			delete(am.processedNotifIDs, oldest)
+			am.processedNotifQueue[am.notifHead] = item.IDNotifikasi
+			am.notifHead = (am.notifHead + 1) % maxNotifHistory
 		}
 		am.processedNotifIDs[item.IDNotifikasi] = struct{}{}
 		am.mu.Unlock()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -69,8 +70,7 @@ func (am *AcademicManager) GetExams(ctx context.Context, tahun, semester, jenis 
 
 	am.mu.RLock()
 	if entry, ok := am.examCache[key]; ok && time.Since(entry.timestamp) < am.ttl {
-		items := make([]ExamItem, len(entry.items))
-		copy(items, entry.items)
+		items := entry.items
 		am.mu.RUnlock()
 		return items, nil
 	}
@@ -86,7 +86,10 @@ func (am *AcademicManager) GetExams(ctx context.Context, tahun, semester, jenis 
 	if err != nil {
 		return nil, fmt.Errorf("fetch exams: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
@@ -96,7 +99,7 @@ func (am *AcademicManager) GetExams(ctx context.Context, tahun, semester, jenis 
 	}
 
 	var items []ExamItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
 		return nil, fmt.Errorf("decode exams: %w", err)
 	}
 
@@ -114,15 +117,15 @@ func (am *AcademicManager) GetExams(ctx context.Context, tahun, semester, jenis 
 	})
 
 	am.mu.Lock()
+	now := time.Now()
+	am.sweepExpiredLocked(now)
 	am.examCache[key] = examCacheEntry{
 		items:     items,
-		timestamp: time.Now(),
+		timestamp: now,
 	}
 	am.mu.Unlock()
 
-	result := make([]ExamItem, len(items))
-	copy(result, items)
-	return result, nil
+	return items, nil
 }
 
 func (am *AcademicManager) FormatExamsText(ctx context.Context, tahun, semester int) (string, error) {

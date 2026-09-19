@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -67,7 +68,10 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 			rosterErr = fmt.Errorf("fetch roster: %w", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+		}()
 
 		if resp.StatusCode == http.StatusUnauthorized {
 			rosterErr = ErrUnauthorized
@@ -76,7 +80,7 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 
 		if resp.StatusCode == http.StatusOK {
 			var items []RosterItem
-			if err := json.NewDecoder(resp.Body).Decode(&items); err == nil {
+			if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err == nil {
 				for _, item := range items {
 					if item.NRP != "" || item.Nama != "" {
 						attendees = append(attendees, item)
@@ -97,7 +101,10 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 		if err != nil {
 			return
 		}
-		defer respCount.Body.Close()
+		defer func() {
+			_, _ = io.Copy(io.Discard, io.LimitReader(respCount.Body, 4096))
+			_ = respCount.Body.Close()
+		}()
 
 		if respCount.StatusCode == http.StatusOK {
 			var res struct {
@@ -106,7 +113,7 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 					Jumlah any `json:"jumlah"`
 				} `json:"data"`
 			}
-			if json.NewDecoder(respCount.Body).Decode(&res) == nil {
+			if json.NewDecoder(io.LimitReader(respCount.Body, 64*1024)).Decode(&res) == nil {
 				if res.Data.Jumlah != nil {
 					totalEnrolled = parseCount(res.Data.Jumlah)
 				} else {
@@ -218,14 +225,17 @@ func (am *AcademicManager) fetchStudentHistory(ctx context.Context, c Course, st
 	if err != nil {
 		return nil, fmt.Errorf("fetch riwayat: %w", err)
 	}
-	defer respHist.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(respHist.Body, 4096))
+		_ = respHist.Body.Close()
+	}()
 
 	if respHist.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
 	}
 	var studentItems []studentHistoryItem
 	if respHist.StatusCode == http.StatusOK {
-		_ = json.NewDecoder(respHist.Body).Decode(&studentItems)
+		_ = json.NewDecoder(io.LimitReader(respHist.Body, 256*1024)).Decode(&studentItems)
 	}
 	return studentItems, nil
 }
@@ -241,14 +251,17 @@ func (am *AcademicManager) fetchLecturerHistory(ctx context.Context, c Course, t
 	if err != nil {
 		return nil, fmt.Errorf("fetch presensi dosen: %w", err)
 	}
-	defer respDosen.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(respDosen.Body, 4096))
+		_ = respDosen.Body.Close()
+	}()
 
 	if respDosen.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
 	}
 	var lecturerItems []lecturerHistoryItem
 	if respDosen.StatusCode == http.StatusOK {
-		_ = json.NewDecoder(respDosen.Body).Decode(&lecturerItems)
+		_ = json.NewDecoder(io.LimitReader(respDosen.Body, 256*1024)).Decode(&lecturerItems)
 	}
 	return lecturerItems, nil
 }
@@ -331,12 +344,15 @@ func (am *AcademicManager) fetchBerandaStats(ctx context.Context, tahun, semeste
 	if err != nil {
 		return 0, 0, false
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return 0, 0, false
 	}
 	var res berandaStatsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil || !res.Sukses {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&res); err != nil || !res.Sukses {
 		return 0, 0, false
 	}
 	rata := float64(parseCount(res.Data.RataHadir))
@@ -352,11 +368,9 @@ func (am *AcademicManager) getAttendanceStatsAt(ctx context.Context, now time.Ti
 	key := fmt.Sprintf("%d-%d-%d-%s", tahun, semester, studentID, todayStr)
 	am.mu.RLock()
 	if entry, ok := am.attendanceCache[key]; ok && time.Since(entry.timestamp) < am.ttl {
-		cp := *entry.stats
-		cp.Breakdown = make([]CourseAttendance, len(entry.stats.Breakdown))
-		copy(cp.Breakdown, entry.stats.Breakdown)
+		stats := entry.stats
 		am.mu.RUnlock()
-		return &cp, nil
+		return stats, nil
 	}
 	am.mu.RUnlock()
 
@@ -440,9 +454,11 @@ courseLoop:
 	}
 
 	am.mu.Lock()
+	nowTime := time.Now()
+	am.sweepExpiredLocked(nowTime)
 	am.attendanceCache[key] = attendanceCacheEntry{
 		stats:     stats,
-		timestamp: time.Now(),
+		timestamp: nowTime,
 	}
 	am.mu.Unlock()
 

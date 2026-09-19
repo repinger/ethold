@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -34,7 +35,10 @@ func (am *AcademicManager) fetchTasks(ctx context.Context, c Course) ([]TaskItem
 	if err != nil {
 		return nil, fmt.Errorf("fetch tasks: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
@@ -44,14 +48,16 @@ func (am *AcademicManager) fetchTasks(ctx context.Context, c Course) ([]TaskItem
 	}
 
 	var items []TaskItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
 		return nil, fmt.Errorf("decode tasks: %w", err)
 	}
 
 	am.mu.Lock()
+	now := time.Now()
+	am.sweepExpiredLocked(now)
 	am.taskCache[c.Nomor] = taskCacheEntry{
 		items:     items,
-		timestamp: time.Now(),
+		timestamp: now,
 	}
 	am.mu.Unlock()
 

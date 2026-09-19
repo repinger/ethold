@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -39,8 +40,7 @@ func (a AnnouncementItem) ItemContent() string {
 func (am *AcademicManager) GetAnnouncements(ctx context.Context) ([]AnnouncementItem, error) {
 	am.mu.RLock()
 	if !am.announcementCache.timestamp.IsZero() && time.Since(am.announcementCache.timestamp) < am.ttl {
-		items := make([]AnnouncementItem, len(am.announcementCache.items))
-		copy(items, am.announcementCache.items)
+		items := am.announcementCache.items
 		am.mu.RUnlock()
 		return items, nil
 	}
@@ -56,7 +56,10 @@ func (am *AcademicManager) GetAnnouncements(ctx context.Context) ([]Announcement
 	if err != nil {
 		return nil, fmt.Errorf("fetch announcements: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
@@ -66,7 +69,7 @@ func (am *AcademicManager) GetAnnouncements(ctx context.Context) ([]Announcement
 	}
 
 	var items []AnnouncementItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
 		return nil, fmt.Errorf("decode announcements: %w", err)
 	}
 
@@ -81,15 +84,15 @@ func (am *AcademicManager) GetAnnouncements(ctx context.Context) ([]Announcement
 	})
 
 	am.mu.Lock()
+	now := time.Now()
+	am.sweepExpiredLocked(now)
 	am.announcementCache = announcementCacheEntry{
 		items:     items,
-		timestamp: time.Now(),
+		timestamp: now,
 	}
 	am.mu.Unlock()
 
-	result := make([]AnnouncementItem, len(items))
-	copy(result, items)
-	return result, nil
+	return items, nil
 }
 
 func (am *AcademicManager) FormatAnnouncementsText(ctx context.Context) (string, error) {
