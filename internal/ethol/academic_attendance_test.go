@@ -66,6 +66,38 @@ func TestAcademicManager_Attendance(t *testing.T) {
 	}
 }
 
+func TestAcademicManager_Attendance_BerandaStats(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/presensi/stat-beranda-mahasiswa":
+			w.Write([]byte(`{"sukses": true, "data": {"totalSesi": 40, "rataHadir": 95}}`))
+		case "/api/presensi/riwayat":
+			w.Write([]byte(`[{"tanggal":"09-09-2024"}]`))
+		case "/api/presensi/get-tanggal-presensi-dosen-per-semester":
+			w.Write([]byte(`[{"waktu_indonesia":"09-09-2024"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	courses := []Course{{Nomor: 501, Matakuliah: "Basis Data", Dosen: "Ir. Dosen"}}
+	stats, err := am.getAttendanceStatsAt(context.Background(), time.Now().In(WIBLocation), 2026, 1, 1001, courses)
+	if err != nil {
+		t.Fatalf("getAttendanceStatsAt error: %v", err)
+	}
+	if stats.Percentage != 95.0 {
+		t.Errorf("expected official percentage 95.0%% from stat-beranda-mahasiswa, got %f", stats.Percentage)
+	}
+}
+
 func TestAcademicManager_Attendance_Caching(t *testing.T) {
 	var riwayatCalls, dosenCalls int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

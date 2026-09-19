@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -128,6 +129,22 @@ taskLoop:
 			pending = append(pending, item)
 		}
 	}
+
+	slices.SortStableFunc(pending, func(a, b TaskItem) int {
+		ta, okA := parseTaskDeadline(a.Deadline)
+		tb, okB := parseTaskDeadline(b.Deadline)
+		if okA && okB {
+			return ta.Compare(tb)
+		}
+		if okA {
+			return -1
+		}
+		if okB {
+			return 1
+		}
+		return strings.Compare(a.Title, b.Title)
+	})
+
 	return pending, nil
 }
 
@@ -145,7 +162,17 @@ func (am *AcademicManager) FormatTasksText(ctx context.Context, courses []Course
 	sb.Grow(len(tasks) * 128)
 	sb.WriteString(fmt.Sprintf("📝 <b>DAFTAR TUGAS BELUM SELESAI (%d)</b>\n\n", len(tasks)))
 
+	now := NowWIB()
 	for i, task := range tasks {
+		badge := ""
+		if dt, ok := parseTaskDeadline(task.Deadline); ok {
+			if now.After(dt) {
+				badge = "⚠️ [LEWAT] "
+			} else if dt.Sub(now) <= 24*time.Hour {
+				badge = "🚨 [SEGERA] "
+			}
+		}
+
 		title := html.EscapeString(task.Title)
 
 		matkul := html.EscapeString(task.CourseName)
@@ -155,7 +182,7 @@ func (am *AcademicManager) FormatTasksText(ctx context.Context, courses []Course
 		}
 		deadline = html.EscapeString(deadline)
 
-		sb.WriteString(fmt.Sprintf("%d. <b>%s</b>\n", i+1, title))
+		sb.WriteString(fmt.Sprintf("%d. %s<b>%s</b>\n", i+1, badge, title))
 		if matkul != "" {
 			sb.WriteString(fmt.Sprintf("   📚 %s\n", matkul))
 		}
@@ -169,6 +196,39 @@ func (am *AcademicManager) FormatTasksText(ctx context.Context, courses []Course
 	}
 
 	return strings.TrimSpace(sb.String()), nil
+}
+
+func parseTaskDeadline(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "-" {
+		return time.Time{}, false
+	}
+	clean := s
+	if strings.HasSuffix(clean, " WIB") {
+		clean = strings.TrimSuffix(clean, " WIB")
+		for _, layout := range []string{"02-01-2006 15:04:05", "02-01-2006 15:04", "2006-01-02 15:04:05", "2006-01-02 15:04"} {
+			if t, err := time.ParseInLocation(layout, clean, WIBLocation); err == nil {
+				return t, true
+			}
+		}
+	}
+	layouts := []string{
+		"02-01-2006 15:04 WIB",
+		"02-01-2006 15:04:05 WIB",
+		"02-01-2006 15:04",
+		"02-01-2006 15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04:05",
+		"2006-01-02",
+		"02-01-2006",
+	}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, s, WIBLocation); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func isTaskSubmitted(v any) bool {

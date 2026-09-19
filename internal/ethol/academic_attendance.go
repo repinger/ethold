@@ -313,6 +313,37 @@ func (am *AcademicManager) fetchCourseAttendance(ctx context.Context, c Course, 
 	}, nil
 }
 
+type berandaStatsResponse struct {
+	Sukses bool `json:"sukses"`
+	Data   struct {
+		TotalSesi any `json:"totalSesi"`
+		RataHadir any `json:"rataHadir"`
+	} `json:"data"`
+}
+
+func (am *AcademicManager) fetchBerandaStats(ctx context.Context, tahun, semester int) (float64, int, bool) {
+	endpoint := fmt.Sprintf("%s/api/presensi/stat-beranda-mahasiswa?tahun=%d&semester=%d", am.baseURL, tahun, semester)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, 0, false
+	}
+	resp, err := am.client.Do(req)
+	if err != nil {
+		return 0, 0, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, false
+	}
+	var res berandaStatsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil || !res.Sukses {
+		return 0, 0, false
+	}
+	rata := float64(parseCount(res.Data.RataHadir))
+	total := parseCount(res.Data.TotalSesi)
+	return rata, total, true
+}
+
 func (am *AcademicManager) getAttendanceStatsAt(ctx context.Context, now time.Time, tahun, semester, studentID int, courses []Course) (*AttendanceStats, error) {
 	nowWIB := now.In(WIBLocation)
 	todayStr := nowWIB.Format("02-01-2006")
@@ -329,23 +360,35 @@ func (am *AcademicManager) getAttendanceStatsAt(ctx context.Context, now time.Ti
 	}
 	am.mu.RUnlock()
 
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	stats := &AttendanceStats{
 		Breakdown: make([]CourseAttendance, 0, len(courses)),
 	}
+
+	var (
+		berandaRata  float64
+		berandaTotal int
+		hasBeranda   bool
+		berandaWg    sync.WaitGroup
+	)
+	berandaWg.Add(1)
+	go func() {
+		defer berandaWg.Done()
+		berandaRata, berandaTotal, hasBeranda = am.fetchBerandaStats(cancelCtx, tahun, semester)
+	}()
 
 	results := make([]CourseAttendance, len(courses))
 	var wg sync.WaitGroup
 	var errOnce sync.Once
 	var firstErr error
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	sem := make(chan struct{}, maxAcademicConcurrency)
 courseLoop:
 	for i, c := range courses {
 		select {
-		case <-ctx.Done():
+		case <-cancelCtx.Done():
 			break courseLoop
 		case sem <- struct{}{}:
 		}
@@ -356,7 +399,7 @@ courseLoop:
 				<-sem
 				wg.Done()
 			}()
-			ca, err := am.fetchCourseAttendance(ctx, crs, tahun, semester, studentID, todayStr, todayStrAlt)
+			ca, err := am.fetchCourseAttendance(cancelCtx, crs, tahun, semester, studentID, todayStr, todayStrAlt)
 			if err != nil {
 				errOnce.Do(func() {
 					firstErr = err
@@ -368,6 +411,7 @@ courseLoop:
 		}(i, c)
 	}
 	wg.Wait()
+	berandaWg.Wait()
 
 	if firstErr != nil {
 		return nil, firstErr
@@ -381,7 +425,12 @@ courseLoop:
 		stats.Breakdown = append(stats.Breakdown, ca)
 	}
 
-	if stats.TotalDosenSemester > 0 {
+	if hasBeranda {
+		stats.Percentage = berandaRata
+		if stats.TotalDosenSemester == 0 && berandaTotal > 0 {
+			stats.TotalDosenSemester = berandaTotal
+		}
+	} else if stats.TotalDosenSemester > 0 {
 		stats.Percentage = (float64(stats.TotalMhsSemester) / float64(stats.TotalDosenSemester)) * 100.0
 		if stats.Percentage > 100.0 {
 			stats.Percentage = 100.0

@@ -149,3 +149,52 @@ func TestAcademicManager_Tasks_Caching(t *testing.T) {
 		t.Errorf("expected still 1 task call due to caching, got %d", calls)
 	}
 }
+
+func TestAcademicManager_Tasks_DeadlineSortingAndUrgency(t *testing.T) {
+	now := NowWIB()
+	soon := now.Add(2 * time.Hour).Format("02-01-2006 15:04 WIB")
+	later := now.Add(48 * time.Hour).Format("02-01-2006 15:04 WIB")
+	past := now.Add(-2 * time.Hour).Format("02-01-2006 15:04 WIB")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[
+			{"title": "Task Later", "deadline": "` + later + `", "tutup": "0"},
+			{"title": "Task Soon", "deadline": "` + soon + `", "tutup": "0"},
+			{"title": "Task Past", "deadline": "` + past + `", "tutup": "0"}
+		]`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	courses := []Course{{Nomor: 101, Matakuliah: "Test MK"}}
+
+	tasks, err := am.GetPendingTasks(context.Background(), courses)
+	if err != nil {
+		t.Fatalf("GetPendingTasks error: %v", err)
+	}
+	if len(tasks) != 3 {
+		t.Fatalf("expected 3 tasks, got %d", len(tasks))
+	}
+
+	// Sorted: past, soon, later
+	if tasks[0].Title != "Task Past" || tasks[1].Title != "Task Soon" || tasks[2].Title != "Task Later" {
+		t.Errorf("expected tasks sorted by deadline, got: %s, %s, %s", tasks[0].Title, tasks[1].Title, tasks[2].Title)
+	}
+
+	txt, err := am.FormatTasksText(context.Background(), courses)
+	if err != nil {
+		t.Fatalf("FormatTasksText error: %v", err)
+	}
+	if !strings.Contains(txt, "🚨 [SEGERA]") {
+		t.Errorf("expected urgent deadline badge in text, got:\n%s", txt)
+	}
+	if !strings.Contains(txt, "⚠️ [LEWAT]") {
+		t.Errorf("expected past deadline badge in text, got:\n%s", txt)
+	}
+}
