@@ -277,7 +277,7 @@ This file interfaces with the Telegram Bot API.
 
 ### Key Types
 
-- `TelegramNotifier`: Manages outgoing alerts, incoming command updates, and idle-aware rate limiting (`chatRateLimiter`).
+- `TelegramNotifier`: Manages outgoing alerts and incoming command updates.
 
 ### Primary Functions
 
