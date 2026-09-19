@@ -206,6 +206,16 @@ func BenchmarkParseCommand(b *testing.B) {
 	}
 }
 
+func BenchmarkChatRateLimiter_Allow(b *testing.B) {
+	rl := newChatRateLimiter(1000, 1000.0)
+	now := time.Now()
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		rl.Allow(now, 5*time.Second)
+	}
+}
+
 func TestTelegramNotifier_SendMessage_SplitLongMessage(t *testing.T) {
 	var receivedRequests []string
 	var mu sync.Mutex
@@ -367,6 +377,156 @@ func TestTelegramNotifier_RateLimiter_SpamSuppression(t *testing.T) {
 	}
 	if !strings.Contains(sentMessages[3], "Terlalu banyak perintah") {
 		t.Errorf("expected warning message at index 3, got %q", sentMessages[3])
+	}
+}
+
+func TestTelegramNotifier_RateLimiter_SlowHandlerNoLeak(t *testing.T) {
+	var sentMessages []string
+	var sentMu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			var updates []tgUpdate
+			for i := 1; i <= 6; i++ {
+				updates = append(updates, tgUpdate{
+					UpdateID: int64(100 + i),
+					Message: &tgMessage{
+						MessageID: int64(i),
+						Chat:      tgChat{ID: 555},
+						Text:      "/jadwal",
+					},
+				})
+			}
+			json.NewEncoder(w).Encode(tgUpdatesResponse{Ok: true, Result: updates})
+		case "/bot123/sendMessage":
+			var p tgSendMessagePayload
+			_ = json.NewDecoder(r.Body).Decode(&p)
+			sentMu.Lock()
+			sentMessages = append(sentMessages, p.Text)
+			sentMu.Unlock()
+			w.Write([]byte(`{"ok":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "555")
+	// High refill rate so any elapsed execution time would have refilled tokens under the buggy logic
+	tn.rateLimiter = newChatRateLimiter(3, 1000.0)
+
+	var handledCount int
+	handler := func(ctx context.Context, cmd string) string {
+		handledCount++
+		time.Sleep(15 * time.Millisecond) // Simulated slow command processing
+		return "jadwal-ok"
+	}
+
+	nextOffset, err := tn.PollOnce(context.Background(), 1, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+	if nextOffset != 107 {
+		t.Errorf("expected nextOffset 107, got %d", nextOffset)
+	}
+
+	// Burst is 3; slow execution must not refill tokens during the batch
+	if handledCount != 3 {
+		t.Errorf("expected exactly 3 handled commands, got %d", handledCount)
+	}
+
+	sentMu.Lock()
+	defer sentMu.Unlock()
+	// 3 replies + 1 warning message
+	if len(sentMessages) != 4 {
+		t.Fatalf("expected 4 sent messages (3 replies + 1 warning), got %d: %v", len(sentMessages), sentMessages)
+	}
+	if !strings.Contains(sentMessages[3], "Terlalu banyak perintah") {
+		t.Errorf("expected warning message at index 3, got %q", sentMessages[3])
+	}
+}
+
+func TestTelegramNotifier_RateLimiter_AcrossPollsNoBusyRefill(t *testing.T) {
+	var pollCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			p := pollCount.Add(1)
+			var updates []tgUpdate
+			if p == 1 {
+				// First poll returns 2 updates
+				for i := 1; i <= 2; i++ {
+					updates = append(updates, tgUpdate{
+						UpdateID: int64(100 + i),
+						Message: &tgMessage{
+							MessageID: int64(i),
+							Chat:      tgChat{ID: 555},
+							Text:      "/tugas",
+						},
+					})
+				}
+			} else if p == 2 {
+				// Second poll returns 2 updates immediately after first finishes
+				for i := 3; i <= 4; i++ {
+					updates = append(updates, tgUpdate{
+						UpdateID: int64(100 + i),
+						Message: &tgMessage{
+							MessageID: int64(i),
+							Chat:      tgChat{ID: 555},
+							Text:      "/tugas",
+						},
+					})
+				}
+			}
+			json.NewEncoder(w).Encode(tgUpdatesResponse{Ok: true, Result: updates})
+		case "/bot123/sendMessage":
+			w.Write([]byte(`{"ok":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "555")
+	// High refill rate (1000/s). If processing time counted as idle time, poll 2 would get full tokens.
+	tn.rateLimiter = newChatRateLimiter(3, 1000.0)
+
+	var handledCount int
+	handler := func(ctx context.Context, cmd string) string {
+		handledCount++
+		time.Sleep(15 * time.Millisecond) // simulate work
+		return "tugas-ok"
+	}
+
+	// Poll 1: 2 commands executed
+	offset, err := tn.PollOnce(context.Background(), 1, handler)
+	if err != nil {
+		t.Fatalf("PollOnce 1 failed: %v", err)
+	}
+	if handledCount != 2 {
+		t.Fatalf("expected 2 handled in poll 1, got %d", handledCount)
+	}
+
+	// Poll 2 called immediately: only 1 more token left from burst 3
+	_, err = tn.PollOnce(context.Background(), offset, handler)
+	if err != nil {
+		t.Fatalf("PollOnce 2 failed: %v", err)
+	}
+
+	// Total handled should be 3 (burst 3), 4th command was rate-limited
+	if handledCount != 3 {
+		t.Errorf("expected exactly 3 total handled commands across polls, got %d", handledCount)
 	}
 }
 

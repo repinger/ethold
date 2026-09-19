@@ -21,7 +21,7 @@ type chatRateLimiter struct {
 	tokens       float64
 	maxTokens    float64
 	refillRate   float64
-	lastRefill   time.Time
+	lastFinish   time.Time
 	lastWarnTime time.Time
 }
 
@@ -30,20 +30,26 @@ func newChatRateLimiter(burst float64, refillPerSec float64) *chatRateLimiter {
 		tokens:     burst,
 		maxTokens:  burst,
 		refillRate: refillPerSec,
-		lastRefill: time.Now(),
+		lastFinish: time.Now(),
+	}
+}
+
+func (rl *chatRateLimiter) RefillIdle(now time.Time) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if !rl.lastFinish.IsZero() && now.After(rl.lastFinish) {
+		elapsed := now.Sub(rl.lastFinish).Seconds()
+		rl.tokens += elapsed * rl.refillRate
+		if rl.tokens > rl.maxTokens {
+			rl.tokens = rl.maxTokens
+		}
 	}
 }
 
 func (rl *chatRateLimiter) Allow(now time.Time, warnCooldown time.Duration) (allowed bool, warnAllowed bool) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-
-	elapsed := now.Sub(rl.lastRefill).Seconds()
-	rl.lastRefill = now
-	rl.tokens += elapsed * rl.refillRate
-	if rl.tokens > rl.maxTokens {
-		rl.tokens = rl.maxTokens
-	}
 
 	if rl.tokens >= 1.0 {
 		rl.tokens -= 1.0
@@ -55,6 +61,12 @@ func (rl *chatRateLimiter) Allow(now time.Time, warnCooldown time.Duration) (all
 		return false, true
 	}
 	return false, false
+}
+
+func (rl *chatRateLimiter) MarkFinish(now time.Time) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.lastFinish = now
 }
 
 type commandMessageRecord struct {
@@ -613,6 +625,14 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 		return offset, tn.sanitizeError(fmt.Errorf("decode getUpdates: %w", err))
 	}
 
+	batchArrival := time.Now()
+	if tn.rateLimiter != nil {
+		tn.rateLimiter.RefillIdle(batchArrival)
+		defer func() {
+			tn.rateLimiter.MarkFinish(time.Now())
+		}()
+	}
+
 	nextOffset := offset
 	for _, u := range updatesResp.Result {
 		if u.UpdateID >= nextOffset {
@@ -640,7 +660,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			continue
 		}
 		if tn.rateLimiter != nil {
-			allowed, warnAllowed := tn.rateLimiter.Allow(time.Now(), 5*time.Second)
+			allowed, warnAllowed := tn.rateLimiter.Allow(batchArrival, 5*time.Second)
 			if !allowed {
 				slog.Warn("Telegram command rate limited", "cmd", cmd)
 				devLog("Telegram command rate limited", "chat_id", u.Message.Chat.ID, "cmd", cmd)
