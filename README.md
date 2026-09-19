@@ -38,6 +38,8 @@ ETHOL_PASSWORD=sso_password
 # Optional: Telegram alerts (leave empty to disable)
 TELEGRAM_TOKEN=
 TELEGRAM_CHAT_ID=
+TELEGRAM_COMMAND_THREAD_ID=
+TELEGRAM_NOTIF_THREAD_ID=
 
 # Optional: Auto-presence (set to "true" or "1" to enable; disabled by default)
 ETHOL_AUTO_PRESENCE=

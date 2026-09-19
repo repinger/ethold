@@ -31,10 +31,12 @@ The table below lists all supported environment variables:
 | Variable              | Required | Default | Description                                                                                     |
 | --------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------- |
 | `ETHOL_EMAIL`         | Yes      | None    | The PENS CAS username or NRP.                                                                   |
-| `ETHOL_PASSWORD`      | Yes      | None    | The PENS CAS account password.                                                                  |
-| `TELEGRAM_TOKEN`      | No       | None    | The API token from BotFather for Telegram updates.                                              |
-| `TELEGRAM_CHAT_ID`    | No       | None    | The Telegram chat ID that receives messages and issues commands.                                |
-| `ETHOL_AUTO_PRESENCE` | No       | `false` | Enables automated attendance scanning and submission (`true`, `1`, `yes`). Disabled by default. |
+| `ETHOL_PASSWORD`             | Yes      | None    | The PENS CAS account password.                                                                  |
+| `TELEGRAM_TOKEN`             | No       | None    | The API token from BotFather for Telegram updates.                                              |
+| `TELEGRAM_CHAT_ID`           | No       | None    | The Telegram chat ID that receives messages and issues commands.                                |
+| `TELEGRAM_COMMAND_THREAD_ID` | No       | `0`     | Forum topic thread ID where bot commands are accepted and replied to.                           |
+| `TELEGRAM_NOTIF_THREAD_ID`   | No       | `0`     | Forum topic thread ID where notifications and alerts are posted.                                |
+| `ETHOL_AUTO_PRESENCE`        | No       | `false` | Enables automated attendance scanning and submission (`true`, `1`, `yes`). Disabled by default. |
 
 > **Note:** Both `ETHOL_EMAIL` and `ETHOL_PASSWORD` are required (via flag, system env, or file).
 > If Telegram variables are empty, the application disables the Telegram integration.
@@ -62,14 +64,16 @@ ETHOL_AUTO_PRESENCE=true
 
 You can control the application using command line flags:
 
-| Flag                 | Default              | Description                                                           |
-| -------------------- | -------------------- | --------------------------------------------------------------------- |
-| `--config`           | `.env`               | Path to the configuration file (optional if env vars/flags provided). |
-| `--username`         | None                 | ETHOL CAS username or NRP.                                            |
-| `--password`         | None                 | ETHOL CAS password.                                                   |
-| `--telegram-token`   | None                 | Telegram bot token.                                                   |
-| `--telegram-chat-id` | None                 | Telegram chat ID.                                                     |
-| `--state`            | `attended_keys.json` | Path to the JSON state file.                                          |
+| Flag                            | Default              | Description                                                           |
+| ------------------------------- | -------------------- | --------------------------------------------------------------------- |
+| `--config`                      | `.env`               | Path to the configuration file (optional if env vars/flags provided). |
+| `--username`                    | None                 | ETHOL CAS username or NRP.                                            |
+| `--password`                    | None                 | ETHOL CAS password.                                                   |
+| `--telegram-token`              | None                 | Telegram bot token.                                                   |
+| `--telegram-chat-id`            | None                 | Telegram chat ID.                                                     |
+| `--telegram-command-thread-id`  | `0`                  | Forum topic thread ID where bot commands are accepted.                |
+| `--telegram-notif-thread-id`    | `0`                  | Forum topic thread ID where notifications are sent.                   |
+| `--state`                       | `attended_keys.json` | Path to the JSON state file.                                          |
 | `--once`             | `false`              | Run a single scan pass and exit immediately.                          |
 | `--concurrency`      | `4`                  | Number of worker goroutines for course checks.                        |
 | `--verbose`          | `false`              | Show debug log messages in the console.                               |

@@ -6,6 +6,7 @@ This document describes all interactive commands available through the Telegram 
 
 The bot only processes commands sent from the configured `TELEGRAM_CHAT_ID`.
 The bot ignores messages from unauthorized users.
+When configured with `TELEGRAM_COMMAND_THREAD_ID`, the bot only accepts and replies to commands within the specified forum topic thread. Commands or button presses sent outside that topic are ignored or rejected.
 Commands can include bot mention suffixes (for example, `/status@my_bot`).
 The command parser removes these suffixes before execution.
 Incoming commands are throttled via a token bucket (burst: 3, refill: 1 token/second, with a 5-second warning cooldown). Outgoing messages are automatically split across multiple messages if exceeding 4,000 characters.
