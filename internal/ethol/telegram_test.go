@@ -1326,6 +1326,148 @@ func TestTelegramNotifier_EditMessageText_MessageNotModified(t *testing.T) {
 	}
 }
 
+func TestTelegramNotifier_ThreadRouting(t *testing.T) {
+	var sentPayload tgSendMessagePayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot123/sendMessage" {
+			_ = json.NewDecoder(r.Body).Decode(&sentPayload)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"ok":true,"result":{"message_id":42}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	tn.SetThreadIDs(100, 200)
+
+	// SendMessage should route to notifThreadID (200)
+	if err := tn.SendMessage(context.Background(), "notif text"); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if sentPayload.MessageThreadID != 200 {
+		t.Errorf("expected MessageThreadID 200, got %d", sentPayload.MessageThreadID)
+	}
+
+	// SendMessageToThread can override thread
+	if err := tn.SendMessageToThread(context.Background(), "custom thread text", 555); err != nil {
+		t.Fatalf("SendMessageToThread failed: %v", err)
+	}
+	if sentPayload.MessageThreadID != 555 {
+		t.Errorf("expected MessageThreadID 555, got %d", sentPayload.MessageThreadID)
+	}
+}
+
+func TestTelegramNotifier_PollOnce_TopicFilter(t *testing.T) {
+	var (
+		pollCount int
+		sentReply tgSendMessagePayload
+		answeredCB tgAnswerCallbackPayload
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			pollCount++
+			if pollCount == 1 {
+				// Return 3 updates:
+				// 1: Message in wrong topic (thread 999)
+				// 2: Message in correct topic (thread 100)
+				// 3: Callback in wrong topic (thread 999)
+				resp := tgUpdatesResponse{
+					Ok: true,
+					Result: []tgUpdate{
+						{
+							UpdateID: 1,
+							Message: &tgMessage{
+								MessageID:       10,
+								Chat:            tgChat{ID: 888},
+								Text:            "/help",
+								MessageThreadID: 999,
+							},
+						},
+						{
+							UpdateID: 2,
+							Message: &tgMessage{
+								MessageID:       11,
+								Chat:            tgChat{ID: 888},
+								Text:            "/help",
+								MessageThreadID: 100,
+							},
+						},
+						{
+							UpdateID: 3,
+							CallbackQuery: &tgCallbackQuery{
+								ID:   "cb-1",
+								From: tgUser{ID: 888},
+								Message: &tgMessage{
+									MessageID:       12,
+									Chat:            tgChat{ID: 888},
+									MessageThreadID: 999,
+								},
+								Data: "/status",
+							},
+						},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(tgUpdatesResponse{Ok: true, Result: nil})
+		case "/bot123/sendMessage":
+			_ = json.NewDecoder(r.Body).Decode(&sentReply)
+			w.Write([]byte(`{"ok":true,"result":{"message_id":50}}`))
+		case "/bot123/answerCallbackQuery":
+			_ = json.NewDecoder(r.Body).Decode(&answeredCB)
+			w.Write([]byte(`{"ok":true,"result":true}`))
+		case "/bot123/deleteMessages":
+			w.Write([]byte(`{"ok":true,"result":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "888")
+	tn.SetThreadIDs(100, 200)
+
+	var handledCmds []string
+	handler := func(ctx context.Context, cmd string) string {
+		handledCmds = append(handledCmds, cmd)
+		return "Handled: " + cmd
+	}
+
+	nextOffset, err := tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+	waitPendingDeletions(tn)
+
+	if nextOffset != 4 {
+		t.Errorf("expected nextOffset 4, got %d", nextOffset)
+	}
+	if len(handledCmds) != 1 || handledCmds[0] != "/help" {
+		t.Errorf("expected only 1 command handled (/help), got %v", handledCmds)
+	}
+	if sentReply.MessageThreadID != 100 {
+		t.Errorf("expected reply in thread 100, got %d", sentReply.MessageThreadID)
+	}
+	if answeredCB.CallbackQueryID != "cb-1" || !strings.Contains(answeredCB.Text, "topik") {
+		t.Errorf("expected callback query answered with warning, got %+v", answeredCB)
+	}
+}
+
 func BenchmarkTelegram_SplitMessage(b *testing.B) {
 	var sb strings.Builder
 	for i := 0; i < 200; i++ {

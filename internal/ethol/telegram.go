@@ -58,21 +58,23 @@ func (rl *chatRateLimiter) Allow(now time.Time, warnCooldown time.Duration) (all
 }
 
 type TelegramNotifier struct {
-	client        *http.Client
-	pollClient    *http.Client
-	baseURL       string
-	token         string
-	chatID        string
-	chatIDInt     int64
-	rateLimiter   *chatRateLimiter
-	unauthMu      sync.Mutex
-	lastUnauthLog time.Time
-	activeMu      sync.Mutex
-	activeMsgID   int64
-	extraMsgIDs   []int64
-	deleteWg      sync.WaitGroup
-	markupMu      sync.RWMutex
-	replyMarkup   any
+	client          *http.Client
+	pollClient      *http.Client
+	baseURL         string
+	token           string
+	chatID          string
+	chatIDInt       int64
+	commandThreadID int64
+	notifThreadID   int64
+	rateLimiter     *chatRateLimiter
+	unauthMu        sync.Mutex
+	lastUnauthLog   time.Time
+	activeMu        sync.Mutex
+	activeMsgID     int64
+	extraMsgIDs     []int64
+	deleteWg        sync.WaitGroup
+	markupMu        sync.RWMutex
+	replyMarkup     any
 }
 
 func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *TelegramNotifier {
@@ -97,6 +99,11 @@ func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *Te
 	}
 }
 
+func (tn *TelegramNotifier) SetThreadIDs(commandThreadID, notifThreadID int64) {
+	tn.commandThreadID = commandThreadID
+	tn.notifThreadID = notifThreadID
+}
+
 type InlineButton struct {
 	Text string `json:"text"`
 	Data string `json:"callback_data"`
@@ -107,10 +114,11 @@ type tgInlineKeyboardMarkup struct {
 }
 
 type tgSendMessagePayload struct {
-	ChatID      string `json:"chat_id"`
-	Text        string `json:"text"`
-	ParseMode   string `json:"parse_mode"`
-	ReplyMarkup any    `json:"reply_markup,omitempty"`
+	ChatID          string `json:"chat_id"`
+	MessageThreadID int64  `json:"message_thread_id,omitempty"`
+	Text            string `json:"text"`
+	ParseMode       string `json:"parse_mode"`
+	ReplyMarkup     any    `json:"reply_markup,omitempty"`
 }
 
 func (tn *TelegramNotifier) SetInlineKeyboard(buttons [][]InlineButton) {
@@ -190,11 +198,20 @@ func (tn *TelegramNotifier) SendMessage(ctx context.Context, text string) error 
 	return err
 }
 
-func (tn *TelegramNotifier) SendMessageIDs(ctx context.Context, text string) ([]int64, error) {
-	return tn.SendMessageIDsWithMarkup(ctx, text, nil)
+func (tn *TelegramNotifier) SendMessageToThread(ctx context.Context, text string, threadID int64) error {
+	_, err := tn.SendMessageIDsToThread(ctx, text, threadID)
+	return err
 }
 
-func (tn *TelegramNotifier) SendMessageIDsWithMarkup(ctx context.Context, text string, markup any) ([]int64, error) {
+func (tn *TelegramNotifier) SendMessageIDs(ctx context.Context, text string) ([]int64, error) {
+	return tn.SendMessageIDsWithMarkupToThread(ctx, text, nil, tn.notifThreadID)
+}
+
+func (tn *TelegramNotifier) SendMessageIDsToThread(ctx context.Context, text string, threadID int64) ([]int64, error) {
+	return tn.SendMessageIDsWithMarkupToThread(ctx, text, nil, threadID)
+}
+
+func (tn *TelegramNotifier) SendMessageIDsWithMarkupToThread(ctx context.Context, text string, markup any, threadID int64) ([]int64, error) {
 	if tn.token == "" || tn.chatID == "" {
 		slog.Debug("Telegram notification skipped: token or chat_id empty")
 		return nil, nil
@@ -216,7 +233,7 @@ func (tn *TelegramNotifier) SendMessageIDsWithMarkup(ctx context.Context, text s
 		if i == len(chunks)-1 {
 			msgMarkup = markup
 		}
-		msgID, err := tn.sendSingleMessage(ctx, chunk, msgMarkup)
+		msgID, err := tn.sendSingleMessage(ctx, chunk, msgMarkup, threadID)
 		if err != nil {
 			return msgIDs, err
 		}
@@ -252,12 +269,13 @@ func extractRetryAfter(body []byte) int {
 	return 0
 }
 
-func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string, markup any) (int64, error) {
+func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string, markup any, threadID int64) (int64, error) {
 	payload := tgSendMessagePayload{
-		ChatID:      tn.chatID,
-		Text:        text,
-		ParseMode:   "HTML",
-		ReplyMarkup: markup,
+		ChatID:          tn.chatID,
+		MessageThreadID: threadID,
+		Text:            text,
+		ParseMode:       "HTML",
+		ReplyMarkup:     markup,
 	}
 
 	data, err := json.Marshal(payload)
@@ -559,9 +577,10 @@ type tgUser struct {
 }
 
 type tgMessage struct {
-	MessageID int64  `json:"message_id"`
-	Chat      tgChat `json:"chat"`
-	Text      string `json:"text"`
+	MessageID       int64  `json:"message_id"`
+	Chat            tgChat `json:"chat"`
+	Text            string `json:"text"`
+	MessageThreadID int64  `json:"message_thread_id,omitempty"`
 }
 
 type tgCallbackQuery struct {
@@ -738,19 +757,22 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 		}
 
 		var (
-			rawChatID  int64
-			rawText    string
-			userMsgID  int64
-			callbackID string
+			rawChatID   int64
+			rawThreadID int64
+			rawText     string
+			userMsgID   int64
+			callbackID  string
 		)
 
 		if u.Message != nil {
 			rawChatID = u.Message.Chat.ID
+			rawThreadID = u.Message.MessageThreadID
 			rawText = u.Message.Text
 			userMsgID = u.Message.MessageID
 		} else if u.CallbackQuery != nil {
 			if u.CallbackQuery.Message != nil {
 				rawChatID = u.CallbackQuery.Message.Chat.ID
+				rawThreadID = u.CallbackQuery.Message.MessageThreadID
 			} else {
 				rawChatID = u.CallbackQuery.From.ID
 			}
@@ -784,6 +806,23 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			}
 			continue
 		}
+
+		if tn.commandThreadID != 0 && rawThreadID != tn.commandThreadID {
+			slog.Debug("Ignoring Telegram command outside command topic", "cmd", cmd, "thread_id", rawThreadID, "expected", tn.commandThreadID)
+			devLog("Telegram command outside command topic", "cmd", cmd, "thread_id", rawThreadID, "expected", tn.commandThreadID)
+			if callbackID != "" {
+				ackCtx, ackCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				_ = tn.answerCallbackQuery(ackCtx, callbackID, "⚠️ Perintah hanya dapat digunakan di topik perintah.")
+				ackCancel()
+			}
+			continue
+		}
+
+		targetThreadID := rawThreadID
+		if targetThreadID == 0 && tn.commandThreadID != 0 {
+			targetThreadID = tn.commandThreadID
+		}
+
 		if tn.rateLimiter != nil {
 			allowed, warnAllowed := tn.rateLimiter.Allow(time.Now(), 5*time.Second)
 			if !allowed {
@@ -798,7 +837,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 					}
 					ackCancel()
 				} else if warnAllowed {
-					_ = tn.SendMessage(ctx, "⏳ <b>Terlalu banyak perintah.</b> Harap tunggu beberapa detik.")
+					_ = tn.SendMessageToThread(ctx, "⏳ <b>Terlalu banyak perintah.</b> Harap tunggu beberapa detik.", targetThreadID)
 				}
 				if userMsgID > 0 {
 					tn.deleteWg.Add(1)
@@ -870,7 +909,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 
 					if len(chunks) > 1 {
 						for _, chunk := range chunks[1:] {
-							mid, err := tn.sendSingleMessage(ctx, chunk, nil)
+							mid, err := tn.sendSingleMessage(ctx, chunk, nil, targetThreadID)
 							if err != nil {
 								sendErr = err
 								break
@@ -890,7 +929,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 
 			if !edited {
 				var newIDs []int64
-				newIDs, sendErr = tn.SendMessageIDsWithMarkup(ctx, reply, markup)
+				newIDs, sendErr = tn.SendMessageIDsWithMarkupToThread(ctx, reply, markup, targetThreadID)
 				if sendErr != nil {
 					slog.Error("Failed to reply to Telegram command", "cmd", cmd, "error", sendErr)
 				} else if len(newIDs) > 0 {
