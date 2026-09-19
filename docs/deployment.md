@@ -44,6 +44,13 @@ The `docker-compose.yml` file defines:
 - **Command:** Passes `--state /app/data/attended_keys.json` to store records on persistent storage.
 - **Restart Policy:** `unless-stopped` restarts the service after server reboot.
 
+### Resource-Constrained Environments
+
+For low-memory VPS instances or Raspberry Pi devices running small container memory caps (e.g. 64MB):
+- **Soft Memory Limit (`GOMEMLIMIT`):** Set `GOMEMLIMIT=48MiB` to make the Go garbage collector trigger proactively before container cgroup limits are exceeded during transient scan spikes.
+- **Garbage Collection Target (`GOGC`):** Default `GOGC=100` is well-suited for steady-state heap (< 4 MB). In extremely tight setups, `GOGC=80` can be used to trim retained heap between scan cycles at negligible CPU cost.
+- **Docker Compose Memory Limit:** Set `deploy.resources.limits.memory: 64M` alongside `GOMEMLIMIT=48MiB` to enforce a strict memory boundary.
+
 ---
 
 ## Standalone Binary Deployment
