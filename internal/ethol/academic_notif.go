@@ -1,6 +1,7 @@
 package ethol
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,19 +9,20 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type NotificationItem struct {
-	IDNotifikasi   int    `json:"idNotifikasi"`
+	IDNotifikasi   string `json:"idNotifikasi"`
 	KodeNotifikasi string `json:"kodeNotifikasi"`
 	Keterangan     string `json:"keterangan"`
 	Status         any    `json:"status"`
 }
 
 func (n *NotificationItem) UnmarshalJSON(data []byte) error {
-	// ponytail: coercing int|string|float ID via parseCount; upgrade if API introduces non-numeric IDs.
+	// ponytail: coercing string|int|float ID; upgrade if API introduces nested ID structures.
 	type Alias NotificationItem
 	aux := &struct {
 		IDNotifikasi any `json:"idNotifikasi"`
@@ -31,7 +33,16 @@ func (n *NotificationItem) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	n.IDNotifikasi = parseCount(aux.IDNotifikasi)
+	switch val := aux.IDNotifikasi.(type) {
+	case string:
+		n.IDNotifikasi = strings.TrimSpace(val)
+	case float64:
+		n.IDNotifikasi = strconv.FormatInt(int64(val), 10)
+	case int:
+		n.IDNotifikasi = strconv.Itoa(val)
+	default:
+		n.IDNotifikasi = ""
+	}
 	return nil
 }
 
@@ -102,13 +113,16 @@ func (am *AcademicManager) PollNotifications(
 	}
 
 	for _, item := range items {
-		if item.IDNotifikasi <= 0 {
+		if strings.TrimSpace(item.IDNotifikasi) == "" {
+			continue
+		}
+		if item.Status != nil && parseCount(item.Status) != 1 {
 			continue
 		}
 
 		am.mu.Lock()
 		if am.processedNotifIDs == nil {
-			am.processedNotifIDs = make(map[int]struct{})
+			am.processedNotifIDs = make(map[string]struct{})
 		}
 		if _, exists := am.processedNotifIDs[item.IDNotifikasi]; exists {
 			am.mu.Unlock()
@@ -149,10 +163,13 @@ func (am *AcademicManager) PollNotifications(
 	return nil
 }
 
-func (am *AcademicManager) markNotificationRead(ctx context.Context, id int) error {
+func (am *AcademicManager) markNotificationRead(ctx context.Context, id string) error {
 	readURL := fmt.Sprintf("%s/api/notifikasi/mahasiswa-baca-notif", am.baseURL)
-	body := strings.NewReader(fmt.Sprintf(`{"idNotifikasi":%d}`, id))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, readURL, body)
+	payload, err := json.Marshal(map[string]string{"idNotifikasi": id})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, readURL, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -163,7 +180,7 @@ func (am *AcademicManager) markNotificationRead(ctx context.Context, id int) err
 		return err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	return nil
 }
 

@@ -15,7 +15,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 	var (
 		presenceTriggered bool
 		taskTriggered     bool
-		markedReadID      int
+		markedReadID      string
 	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +39,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 				}
 			]`))
 		case "/api/notifikasi/mahasiswa-baca-notif":
-			var body map[string]int
+			var body map[string]string
 			json.NewDecoder(r.Body).Decode(&body)
 			markedReadID = body["idNotifikasi"]
 			w.WriteHeader(http.StatusOK)
@@ -72,7 +72,7 @@ func TestAcademicManager_NotificationPolling(t *testing.T) {
 	if !taskTriggered {
 		t.Errorf("expected task notification callback to trigger")
 	}
-	if markedReadID == 0 {
+	if markedReadID == "" {
 		t.Errorf("expected notifications to be marked as read")
 	}
 
@@ -175,6 +175,69 @@ func TestAcademicManager_NotificationPolling_StringID(t *testing.T) {
 	}
 	if !presenceTriggered {
 		t.Errorf("expected presence notification callback to trigger")
+	}
+}
+
+func TestAcademicManager_NotificationPolling_UUIDAndStatusFilter(t *testing.T) {
+	var (
+		presenceTriggered bool
+		taskTriggered     bool
+		markedReadIDs     []string
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			w.Write([]byte(`{"jumlah":1}`))
+		case "/api/notifikasi/mahasiswa":
+			w.Write([]byte(`[
+				{
+					"idNotifikasi": "376cfdf5-59d9-4f4b-8fdb-169593e5e769-23573",
+					"kodeNotifikasi": "PRESENSI-KULIAH",
+					"keterangan": "Dosen telah membuka presensi",
+					"status": "1"
+				},
+				{
+					"idNotifikasi": "old-uuid-99999",
+					"kodeNotifikasi": "TUGAS-BARU",
+					"keterangan": "Tugas lama",
+					"status": "2"
+				}
+			]`))
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			markedReadIDs = append(markedReadIDs, body["idNotifikasi"])
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	err = am.PollNotifications(context.Background(), func(ket string) {
+		presenceTriggered = true
+	}, func(ket string) {
+		taskTriggered = true
+	}, nil)
+
+	if err != nil {
+		t.Fatalf("PollNotifications error: %v", err)
+	}
+	if !presenceTriggered {
+		t.Errorf("expected presence callback for unread notification (status 1)")
+	}
+	if taskTriggered {
+		t.Errorf("expected task callback NOT to trigger for read notification (status 2)")
+	}
+	if len(markedReadIDs) != 1 || markedReadIDs[0] != "376cfdf5-59d9-4f4b-8fdb-169593e5e769-23573" {
+		t.Errorf("expected UUID marked as read, got %v", markedReadIDs)
 	}
 }
 

@@ -55,8 +55,8 @@ type AcademicManager struct {
 	attendanceCache     map[string]attendanceCacheEntry // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	examCache           map[string]examCacheEntry       // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	announcementCache   announcementCacheEntry
-	processedNotifIDs   map[int]struct{} // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
-	processedNotifQueue []int
+	processedNotifIDs   map[string]struct{} // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
+	processedNotifQueue []string
 	notifHead           int
 }
 
@@ -82,7 +82,7 @@ func NewAcademicManager(client *http.Client, baseURL string, ttl time.Duration) 
 		videoCache:        make(map[int]videoCacheEntry),
 		attendanceCache:   make(map[string]attendanceCacheEntry),
 		examCache:         make(map[string]examCacheEntry),
-		processedNotifIDs: make(map[int]struct{}),
+		processedNotifIDs: make(map[string]struct{}),
 	}
 }
 
