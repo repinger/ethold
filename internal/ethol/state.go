@@ -1,6 +1,7 @@
 package ethol
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -29,12 +30,15 @@ type StateManager struct {
 	mu      sync.RWMutex
 	path    string
 	records map[string]PresenceRecord
+	keyList []string
+	recs    map[string]PresenceRecord
 }
 
 func NewStateManager(path string) (*StateManager, error) {
 	sm := &StateManager{
 		path:    path,
 		records: make(map[string]PresenceRecord),
+		recs:    make(map[string]PresenceRecord),
 	}
 
 	dir := filepath.Dir(path)
@@ -142,25 +146,24 @@ func (sm *StateManager) AddRecord(recs ...PresenceRecord) error {
 }
 
 func (sm *StateManager) saveLocked() error {
-	keyList := make([]string, 0, len(sm.records))
-	recs := make(map[string]PresenceRecord)
+	sm.keyList = sm.keyList[:0]
+	if sm.recs == nil {
+		sm.recs = make(map[string]PresenceRecord)
+	} else {
+		clear(sm.recs)
+	}
 	for k, rec := range sm.records {
-		keyList = append(keyList, k)
+		sm.keyList = append(sm.keyList, k)
 		if rec.CourseName != "" || rec.Dosen != "" || rec.Time != "" {
-			recs[k] = rec
+			sm.recs[k] = rec
 		}
 	}
-	slices.Sort(keyList)
+	slices.Sort(sm.keyList)
 
 	sf := stateFile{
-		AttendedKeys: keyList,
-		Records:      recs,
+		AttendedKeys: sm.keyList,
+		Records:      sm.recs,
 		LastUpdated:  time.Now().Format(time.RFC3339),
-	}
-
-	data, err := json.MarshalIndent(sf, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal state: %w", err)
 	}
 
 	dir := filepath.Dir(sm.path)
@@ -170,18 +173,28 @@ func (sm *StateManager) saveLocked() error {
 	}
 	tmpName := tmpFile.Name()
 
-	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpName)
-		return fmt.Errorf("write temp state file: %w", err)
+	bw := bufio.NewWriter(tmpFile)
+	enc := json.NewEncoder(bw)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(sf); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("encode state file: %w", err)
 	}
+
+	if err := bw.Flush(); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("flush temp state file: %w", err)
+	}
+
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("close temp state file: %w", err)
 	}
 
 	if err := os.Rename(tmpName, sm.path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("atomic rename state file: %w", err)
 	}
 

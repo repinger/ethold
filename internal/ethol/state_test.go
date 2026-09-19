@@ -1,6 +1,7 @@
 package ethol
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -167,6 +168,86 @@ func BenchmarkStateManager_CountWithPrefix(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_ = sm.CountWithPrefix("2026-09-11_")
+	}
+}
+
+func BenchmarkStateManager_AddRecord_1k(b *testing.B) {
+	dir := b.TempDir()
+	statePath := filepath.Join(dir, "bench_1k.json")
+	sm, err := NewStateManager(statePath)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < 1000; i++ {
+		sm.records[fmt.Sprintf("key_%04d", i)] = PresenceRecord{
+			Key:        fmt.Sprintf("key_%04d", i),
+			CourseName: "Pemrograman Web Lanjut",
+			Dosen:      "Dr. Dosen Pengampu, S.Kom., M.T.",
+			Time:       "08:00",
+		}
+	}
+	b.ResetTimer()
+	for i := 0; b.Loop(); i++ {
+		_ = sm.AddRecord(PresenceRecord{
+			Key:        fmt.Sprintf("bench_key_%d", i),
+			CourseName: "Sistem Terdistribusi",
+			Dosen:      "Dr. Lecturer",
+			Time:       "10:00",
+		})
+	}
+}
+
+func BenchmarkStateManager_AddRecord_10k(b *testing.B) {
+	dir := b.TempDir()
+	statePath := filepath.Join(dir, "bench_10k.json")
+	sm, err := NewStateManager(statePath)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < 10000; i++ {
+		sm.records[fmt.Sprintf("key_%05d", i)] = PresenceRecord{
+			Key:        fmt.Sprintf("key_%05d", i),
+			CourseName: "Pemrograman Web Lanjut",
+			Dosen:      "Dr. Dosen Pengampu, S.Kom., M.T.",
+			Time:       "08:00",
+		}
+	}
+	b.ResetTimer()
+	for i := 0; b.Loop(); i++ {
+		_ = sm.AddRecord(PresenceRecord{
+			Key:        fmt.Sprintf("bench_key_%d", i),
+			CourseName: "Sistem Terdistribusi",
+			Dosen:      "Dr. Lecturer",
+			Time:       "10:00",
+		})
+	}
+}
+
+func BenchmarkStateManager_NewStateManager_10k(b *testing.B) {
+	dir := b.TempDir()
+	statePath := filepath.Join(dir, "bench_load_10k.json")
+	sm, err := NewStateManager(statePath)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < 10000; i++ {
+		sm.records[fmt.Sprintf("key_%05d", i)] = PresenceRecord{
+			Key:        fmt.Sprintf("key_%05d", i),
+			CourseName: "Pemrograman Web Lanjut",
+			Dosen:      "Dr. Dosen Pengampu, S.Kom., M.T.",
+			Time:       "08:00",
+		}
+	}
+	if err := sm.saveLocked(); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		_, err := NewStateManager(statePath)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
