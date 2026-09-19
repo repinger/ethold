@@ -78,8 +78,8 @@ func TestAcademicManager_Announcements(t *testing.T) {
 	if !strings.Contains(txt, "• 📌 [PINNED] 🚨 [PENTING] <b>Pengisian KRS</b>") {
 		t.Errorf("expected combined pinned and important badges on bullet line, got:\n%s", txt)
 	}
-	if !strings.Contains(txt, "<i>Kampus libur pada tanggal 17 Agustus.</i>") {
-		t.Errorf("expected italicized clean content, got:\n%s", txt)
+	if !strings.Contains(txt, "<blockquote expandable>Kampus libur pada tanggal 17 Agustus.</blockquote>") {
+		t.Errorf("expected expandable blockquote clean content, got:\n%s", txt)
 	}
 	if strings.Contains(txt, "<p>") || strings.Contains(txt, "<b>") && !strings.Contains(txt, "<b>Libur") {
 		t.Errorf("expected HTML tags in isi_pengumuman to be stripped, got: %s", txt)
@@ -173,7 +173,7 @@ func TestFormatAnnouncementsText_LongRuneTruncation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// Long text with multi-byte unicode characters (e.g. Japanese or accents)
-		longContent := strings.Repeat("学", 300)
+		longContent := strings.Repeat("学", 800)
 		w.Write([]byte(`[
 			{
 				"id": 99,
@@ -198,8 +198,8 @@ func TestFormatAnnouncementsText_LongRuneTruncation(t *testing.T) {
 		t.Fatalf("FormatAnnouncementsText error: %v", err)
 	}
 
-	expectedTruncated := "<i>" + strings.Repeat("学", 250) + "...</i>"
+	expectedTruncated := "<blockquote expandable>" + strings.Repeat("学", 750) + "...</blockquote>"
 	if !strings.Contains(txt, expectedTruncated) {
-		t.Errorf("expected 250 rune truncation with ellipsis, got:\n%s", txt)
+		t.Errorf("expected 750 rune truncation with ellipsis, got:\n%s", txt)
 	}
 }

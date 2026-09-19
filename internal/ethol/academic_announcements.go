@@ -102,14 +102,14 @@ func (am *AcademicManager) FormatAnnouncementsText(ctx context.Context) (string,
 		return "📢 <b>PENGUMUMAN KAMPUS</b>\n\nTidak ada pengumuman aktif saat ini.", nil
 	}
 
-	// ponytail: display up to 5 most recent announcements to avoid Telegram length overflow.
+	// ponytail: display up to 5 most recent announcements with expandable blockquotes (capped at 750 runes) to avoid Telegram length overflow.
 	limit := len(items)
 	if limit > 5 {
 		limit = 5
 	}
 
 	var sb strings.Builder
-	sb.Grow(limit * 256)
+	sb.Grow(limit * 512)
 	sb.WriteString(fmt.Sprintf("📢 <b>PENGUMUMAN KAMPUS (%d)</b>\n\n", len(items)))
 
 	for i := 0; i < limit; i++ {
@@ -134,14 +134,14 @@ func (am *AcademicManager) FormatAnnouncementsText(ctx context.Context) (string,
 
 		cleanIsi := stripHTMLTags(item.ItemContent())
 		runes := []rune(cleanIsi)
-		if len(runes) > 250 {
-			cleanIsi = string(runes[:250]) + "..."
+		if len(runes) > 750 {
+			cleanIsi = string(runes[:750]) + "..."
 		}
 		cleanIsi = html.EscapeString(cleanIsi)
 
 		sb.WriteString(fmt.Sprintf("• %s<b>%s</b>\n  📅 %s\n", badgeStr, judul, tgl))
 		if cleanIsi != "" {
-			sb.WriteString(fmt.Sprintf("  <i>%s</i>\n", cleanIsi))
+			sb.WriteString(fmt.Sprintf("  <blockquote expandable>%s</blockquote>\n", cleanIsi))
 		}
 		if i < limit-1 {
 			sb.WriteString("\n")
