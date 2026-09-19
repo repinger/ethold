@@ -6,15 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
 type Config struct {
-	Username       string
-	Password       string
-	TelegramToken  string
-	TelegramChatID string
-	AutoPresence   bool
+	Username                string
+	Password                string
+	TelegramToken           string
+	TelegramChatID          string
+	TelegramCommandThreadID int64
+	TelegramNotifThreadID   int64
+	AutoPresence            bool
 }
 
 func parseBool(s string) bool {
@@ -59,6 +62,21 @@ func resolveValue(override, key string, fileEnv map[string]string) string {
 	return fileEnv[key]
 }
 
+func parseInt64(s string) int64 {
+	v, _ := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	return v
+}
+
+func resolveInt64(override int64, key string, fileEnv map[string]string) int64 {
+	if override != 0 {
+		return override
+	}
+	if val := os.Getenv(key); val != "" {
+		return parseInt64(val)
+	}
+	return parseInt64(fileEnv[key])
+}
+
 func LoadConfig(path string, overrides ...Config) (*Config, error) {
 	env := make(map[string]string)
 	if path != "" {
@@ -77,11 +95,13 @@ func LoadConfig(path string, overrides ...Config) (*Config, error) {
 	}
 
 	cfg := &Config{
-		Username:       resolveValue(override.Username, "ETHOL_EMAIL", env),
-		Password:       resolveValue(override.Password, "ETHOL_PASSWORD", env),
-		TelegramToken:  resolveValue(override.TelegramToken, "TELEGRAM_TOKEN", env),
-		TelegramChatID: resolveValue(override.TelegramChatID, "TELEGRAM_CHAT_ID", env),
-		AutoPresence:   override.AutoPresence || parseBool(resolveValue("", "ETHOL_AUTO_PRESENCE", env)),
+		Username:                resolveValue(override.Username, "ETHOL_EMAIL", env),
+		Password:                resolveValue(override.Password, "ETHOL_PASSWORD", env),
+		TelegramToken:           resolveValue(override.TelegramToken, "TELEGRAM_TOKEN", env),
+		TelegramChatID:          resolveValue(override.TelegramChatID, "TELEGRAM_CHAT_ID", env),
+		TelegramCommandThreadID: resolveInt64(override.TelegramCommandThreadID, "TELEGRAM_COMMAND_THREAD_ID", env),
+		TelegramNotifThreadID:   resolveInt64(override.TelegramNotifThreadID, "TELEGRAM_NOTIF_THREAD_ID", env),
+		AutoPresence:            override.AutoPresence || parseBool(resolveValue("", "ETHOL_AUTO_PRESENCE", env)),
 	}
 
 	if cfg.Username == "" || cfg.Password == "" {

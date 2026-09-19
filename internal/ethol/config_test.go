@@ -16,6 +16,8 @@ ETHOL_EMAIL=user@student.pens.ac.id
 ETHOL_PASSWORD="secret_password"
 TELEGRAM_TOKEN='123456:ABC-DEF'
 export TELEGRAM_CHAT_ID=987654321
+TELEGRAM_COMMAND_THREAD_ID=101
+TELEGRAM_NOTIF_THREAD_ID=202
 `
 	if err := os.WriteFile(envPath, []byte(content), 0600); err != nil {
 		t.Fatalf("write temp env: %v", err)
@@ -37,6 +39,12 @@ export TELEGRAM_CHAT_ID=987654321
 	}
 	if cfg.TelegramChatID != "987654321" {
 		t.Errorf("expected telegram_chat_id '987654321', got '%s'", cfg.TelegramChatID)
+	}
+	if cfg.TelegramCommandThreadID != 101 {
+		t.Errorf("expected telegram_command_thread_id 101, got %d", cfg.TelegramCommandThreadID)
+	}
+	if cfg.TelegramNotifThreadID != 202 {
+		t.Errorf("expected telegram_notif_thread_id 202, got %d", cfg.TelegramNotifThreadID)
 	}
 }
 
@@ -96,10 +104,12 @@ TELEGRAM_CHAT_ID=file_chat
 	// Env overrides file
 	t.Setenv("ETHOL_PASSWORD", "env_pass")
 	t.Setenv("TELEGRAM_TOKEN", "env_token")
+	t.Setenv("TELEGRAM_NOTIF_THREAD_ID", "333")
 
 	// Flag override overrides env and file
 	flagOverride := Config{
-		Username: "flag_user",
+		Username:                "flag_user",
+		TelegramCommandThreadID: 444,
 	}
 
 	cfg, err := LoadConfig(envPath, flagOverride)
@@ -118,6 +128,12 @@ TELEGRAM_CHAT_ID=file_chat
 	}
 	if cfg.TelegramChatID != "file_chat" {
 		t.Errorf("expected chat id 'file_chat' (file fallback), got '%s'", cfg.TelegramChatID)
+	}
+	if cfg.TelegramCommandThreadID != 444 {
+		t.Errorf("expected command thread 444, got %d", cfg.TelegramCommandThreadID)
+	}
+	if cfg.TelegramNotifThreadID != 333 {
+		t.Errorf("expected notif thread 333, got %d", cfg.TelegramNotifThreadID)
 	}
 }
 
