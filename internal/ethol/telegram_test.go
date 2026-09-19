@@ -134,14 +134,74 @@ func TestTelegramNotifier_ParseCommand(t *testing.T) {
 		{"/status@EtholBot", "/status"},
 		{"/check now please", "/check"},
 		{"/ping", "/ping"},
+		// Interactive emoji labels
+		{"📅 Jadwal", "/jadwal"},
+		{"📝 Tugas", "/tugas"},
+		{"👥 Presensi Kelas", "/presensi_kelas"},
+		{"📊 Rekap", "/rekap"},
+		{"⚡ Scan Presensi", "/check"},
+		{"📌 Hari Ini", "/today"},
+		{"📚 Materi", "/materi"},
+		{"📢 Pengumuman", "/pengumuman"},
+		{"ℹ️ Status", "/status"},
+		{"❓ Bantuan", "/help"},
+		{"🎓 Ujian", "/ujian"},
+		{"📖 Mata Kuliah", "/courses"},
+		{"👤 Profil", "/whoami"},
+		{"🔄 Relogin", "/relogin"},
+		{"⏸️ Pause", "/pause"},
+		{"▶️ Resume", "/resume"},
+		{"🛠️ Debug", "/debug"},
+		{"🏓 Ping", "/ping"},
+		// Plain text aliases
+		{"jadwal", "/jadwal"},
+		{"JADWAL", "/jadwal"},
+		{"schedule", "/jadwal"},
+		{"tugas", "/tugas"},
+		{"ujian", "/ujian"},
+		{"matkul", "/courses"},
+		{"courses", "/courses"},
+		{"profil", "/whoami"},
+		{"whoami", "/whoami"},
+		{"relogin", "/relogin"},
+		{"pause", "/pause"},
+		{"jeda", "/pause"},
+		{"resume", "/resume"},
+		{"lanjut", "/resume"},
+		{"debug", "/debug"},
+		{"ping", "/ping"},
+		{"bantuan", "/help"},
+		{"help", "/help"},
+		{"start", "/start"},
+		// Negative / unknown
 		{"hello", ""},
 		{"", ""},
+		{"   ", ""},
+		{"unknown text message", ""},
 	}
 
 	for _, tt := range tests {
 		got := parseCommand(tt.input)
 		if got != tt.expected {
 			t.Errorf("parseCommand(%q) = %q, expected %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
+func BenchmarkParseCommand(b *testing.B) {
+	inputs := []string{
+		"/jadwal",
+		"/jadwal@EtholBot",
+		"📅 Jadwal",
+		"jadwal",
+		"⚡ Scan Presensi",
+		"unknown command text",
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for _, input := range inputs {
+			_ = parseCommand(input)
 		}
 	}
 }
@@ -998,5 +1058,63 @@ func TestTelegramNotifier_PersistentKeyboard(t *testing.T) {
 		t.Errorf("expected reply_markup to be omitted after SetReplyKeyboard(nil), got %v", lastPayload["reply_markup"])
 	}
 	mu.Unlock()
+}
+
+func TestTelegramNotifier_PollOnce_TextAlias(t *testing.T) {
+	var (
+		mu          sync.Mutex
+		lastHandled string
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			resp := tgUpdatesResponse{
+				Ok: true,
+				Result: []tgUpdate{
+					{
+						UpdateID: 1,
+						Message: &tgMessage{
+							MessageID: 10,
+							Chat:      tgChat{ID: 999},
+							Text:      "📅 Jadwal",
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		case "/bot123/sendMessage":
+			w.Write([]byte(`{"ok":true,"result":{"message_id":101}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	handler := func(ctx context.Context, cmd string) string {
+		mu.Lock()
+		lastHandled = cmd
+		mu.Unlock()
+		return "schedule response"
+	}
+
+	_, err = tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+
+	mu.Lock()
+	handled := lastHandled
+	mu.Unlock()
+
+	if handled != "/jadwal" {
+		t.Errorf("expected handler to receive /jadwal for '📅 Jadwal', got %q", handled)
+	}
 }
 

@@ -165,17 +165,17 @@ func run() error {
 	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
 		if cfg.AutoPresence {
 			notifier.SetReplyKeyboard([][]string{
-				{"/jadwal", "/tugas"},
-				{"/presensi_kelas", "/rekap"},
-				{"/check", "/today"},
-				{"/status", "/help"},
+				{"📅 Jadwal", "📝 Tugas"},
+				{"👥 Presensi Kelas", "📊 Rekap"},
+				{"⚡ Scan Presensi", "📌 Hari Ini"},
+				{"ℹ️ Status", "❓ Bantuan"},
 			})
 		} else {
 			notifier.SetReplyKeyboard([][]string{
-				{"/jadwal", "/tugas"},
-				{"/presensi_kelas", "/rekap"},
-				{"/materi", "/pengumuman"},
-				{"/status", "/help"},
+				{"📅 Jadwal", "📝 Tugas"},
+				{"👥 Presensi Kelas", "📊 Rekap"},
+				{"📚 Materi", "📢 Pengumuman"},
+				{"ℹ️ Status", "❓ Bantuan"},
 			})
 		}
 		go notifier.StartCommandPoller(ctx, scanner.HandleTelegramCommand)

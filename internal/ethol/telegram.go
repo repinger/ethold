@@ -500,20 +500,86 @@ type tgUpdatesResponse struct {
 	Result []tgUpdate `json:"result"`
 }
 
+var commandTextAliases = map[string]string{
+	// Keyboard buttons & friendly text
+	"📅 jadwal":        "/jadwal",
+	"jadwal":           "/jadwal",
+	"schedule":         "/jadwal",
+	"📝 tugas":         "/tugas",
+	"tugas":            "/tugas",
+	"tasks":            "/tugas",
+	"task":             "/tugas",
+	"👥 presensi kelas": "/presensi_kelas",
+	"presensi kelas":   "/presensi_kelas",
+	"presensi_kelas":   "/presensi_kelas",
+	"roster":           "/presensi_kelas",
+	"📊 rekap":         "/rekap",
+	"rekap":            "/rekap",
+	"rekapitulasi":     "/rekap",
+	"⚡ scan presensi":  "/check",
+	"scan presensi":    "/check",
+	"scan":             "/check",
+	"check":            "/check",
+	"📌 hari ini":       "/today",
+	"hari ini":         "/today",
+	"today":            "/today",
+	"📚 materi":        "/materi",
+	"materi":           "/materi",
+	"materials":        "/materi",
+	"📢 pengumuman":    "/pengumuman",
+	"pengumuman":       "/pengumuman",
+	"announcements":    "/pengumuman",
+	"announcement":     "/pengumuman",
+	"ℹ️ status":        "/status",
+	"status":           "/status",
+	"❓ bantuan":       "/help",
+	"bantuan":          "/help",
+	"help":             "/help",
+	"start":            "/start",
+	// Secondary commands
+	"🎓 ujian":         "/ujian",
+	"ujian":            "/ujian",
+	"exams":            "/ujian",
+	"exam":             "/ujian",
+	"📖 mata kuliah":   "/courses",
+	"mata kuliah":      "/courses",
+	"matkul":           "/courses",
+	"courses":          "/courses",
+	"👤 profil":        "/whoami",
+	"profil":           "/whoami",
+	"profile":          "/whoami",
+	"whoami":           "/whoami",
+	"🔄 relogin":       "/relogin",
+	"relogin":          "/relogin",
+	"⏸️ pause":         "/pause",
+	"pause":            "/pause",
+	"jeda":             "/pause",
+	"▶️ resume":        "/resume",
+	"resume":           "/resume",
+	"lanjut":           "/resume",
+	"🛠️ debug":        "/debug",
+	"debug":            "/debug",
+	"🏓 ping":          "/ping",
+	"ping":             "/ping",
+}
+
 func parseCommand(text string) string {
 	text = strings.TrimSpace(text)
-	if !strings.HasPrefix(text, "/") {
-		return ""
+	if strings.HasPrefix(text, "/") {
+		fields := strings.Fields(text)
+		if len(fields) == 0 {
+			return ""
+		}
+		cmd := fields[0]
+		if idx := strings.Index(cmd, "@"); idx != -1 {
+			cmd = cmd[:idx]
+		}
+		return cmd
 	}
-	fields := strings.Fields(text)
-	if len(fields) == 0 {
-		return ""
+	if cmd, ok := commandTextAliases[strings.ToLower(text)]; ok {
+		return cmd
 	}
-	cmd := fields[0]
-	if idx := strings.Index(cmd, "@"); idx != -1 {
-		cmd = cmd[:idx]
-	}
-	return cmd
+	return ""
 }
 
 func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler func(ctx context.Context, cmd string) string) (int64, error) {
