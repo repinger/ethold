@@ -1120,8 +1120,8 @@ func TestScanner_NotifyStartup(t *testing.T) {
 	if !strings.Contains(sentPayload.Text, "v1.0.0") {
 		t.Errorf("expected version, got: %s", sentPayload.Text)
 	}
-	if !strings.Contains(sentPayload.Text, "Auto-Presence (4 workers)") {
-		t.Errorf("expected auto-presence info, got: %s", sentPayload.Text)
+	if !strings.Contains(sentPayload.Text, "Auto-Presence (4 workers) [Direct Chat]") {
+		t.Errorf("expected auto-presence info with direct chat tag, got: %s", sentPayload.Text)
 	}
 
 	nilScanner := NewScanner(auth, courses, presence, academic, state, nil, 4)

@@ -580,14 +580,31 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 		if !strings.Contains(sentPayload.Text, "v1.2.3") {
 			t.Errorf("expected version in payload, got: %s", sentPayload.Text)
 		}
-		if !strings.Contains(sentPayload.Text, "Auto-Presence (4 workers)") {
-			t.Errorf("expected mode in payload, got: %s", sentPayload.Text)
+		if !strings.Contains(sentPayload.Text, "Auto-Presence (4 workers) [Direct Chat]") {
+			t.Errorf("expected mode with direct chat in payload, got: %s", sentPayload.Text)
 		}
 		if !strings.Contains(sentPayload.Text, "30s (Active Session)") {
 			t.Errorf("expected scan interval and mode, got: %s", sentPayload.Text)
 		}
 		if !strings.Contains(sentPayload.Text, "10 entri (2 hari ini)") {
 			t.Errorf("expected records count, got: %s", sentPayload.Text)
+		}
+	})
+
+	t.Run("auto-presence with forum topics", func(t *testing.T) {
+		tnTopics := NewTelegramNotifier(client, server.URL, "123", "777")
+		tnTopics.SetThreadIDs(2, 4)
+		err = tnTopics.NotifyStartup(context.Background(), StartupInfo{
+			Version:      "v1.2.3",
+			User:         &UserInfo{Nama: "Budi Santoso", NipNrp: "3120600001"},
+			AutoPresence: true,
+			WorkerCount:  4,
+		})
+		if err != nil {
+			t.Fatalf("NotifyStartup failed: %v", err)
+		}
+		if !strings.Contains(sentPayload.Text, "Auto-Presence (4 workers) [Forum Topics]") {
+			t.Errorf("expected mode with forum topics in payload, got: %s", sentPayload.Text)
 		}
 	})
 
@@ -601,7 +618,7 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 			t.Fatalf("NotifyStartup failed: %v", err)
 		}
 
-		if !strings.Contains(sentPayload.Text, "Akademik Saja") {
+		if !strings.Contains(sentPayload.Text, "Akademik Saja (Presensi Manual) [Direct Chat]") {
 			t.Errorf("expected academic mode in payload, got: %s", sentPayload.Text)
 		}
 		if !strings.Contains(sentPayload.Text, "Tidak diketahui") {

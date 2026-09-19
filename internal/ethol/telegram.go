@@ -540,8 +540,13 @@ func (tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo)
 	sb.WriteString(fmt.Sprintf("🏷️ <b>Versi:</b> <code>%s</code>\n", html.EscapeString(verStr)))
 	sb.WriteString(fmt.Sprintf("🕒 <b>Waktu Mulai:</b> %s\n", waktuStr))
 
+	setupTag := "[Direct Chat]"
+	if tn.commandThreadID != 0 || tn.notifThreadID != 0 {
+		setupTag = "[Forum Topics]"
+	}
+
 	if info.AutoPresence {
-		sb.WriteString(fmt.Sprintf("⚙️ <b>Mode:</b> Auto-Presence (%d workers)\n", info.WorkerCount))
+		sb.WriteString(fmt.Sprintf("⚙️ <b>Mode:</b> Auto-Presence (%d workers) %s\n", info.WorkerCount, setupTag))
 		if info.ScanInterval > 0 {
 			scanMode := "Background Sweep"
 			if info.InScanWindow {
@@ -551,7 +556,7 @@ func (tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo)
 		}
 		sb.WriteString(fmt.Sprintf("💾 <b>Presensi Tersimpan:</b> %d entri (%d hari ini)\n", info.TotalRecords, info.TodayRecords))
 	} else {
-		sb.WriteString("⚙️ <b>Mode:</b> Akademik Saja (Presensi Manual)\n")
+		sb.WriteString(fmt.Sprintf("⚙️ <b>Mode:</b> Akademik Saja (Presensi Manual) %s\n", setupTag))
 	}
 
 	sb.WriteString("\n<i>Bot siap menerima perintah dan memantau aktivitas ETHOL.</i>")
