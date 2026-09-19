@@ -118,43 +118,11 @@ type tgInlineKeyboardMarkup struct {
 	InlineKeyboard [][]InlineButton `json:"inline_keyboard"`
 }
 
-type tgReplyKeyboardMarkup struct {
-	Keyboard       [][]tgKeyboardButton `json:"keyboard"`
-	ResizeKeyboard bool                 `json:"resize_keyboard"`
-	IsPersistent   bool                 `json:"is_persistent,omitempty"`
-}
-
-type tgKeyboardButton struct {
-	Text string `json:"text"`
-}
-
 type tgSendMessagePayload struct {
 	ChatID      string `json:"chat_id"`
 	Text        string `json:"text"`
 	ParseMode   string `json:"parse_mode"`
 	ReplyMarkup any    `json:"reply_markup,omitempty"`
-}
-
-// ponytail: supports 2D text button matrix. upgrade path: inline keyboard buttons with callback_data if stateful multi-step menus needed.
-func (tn *TelegramNotifier) SetReplyKeyboard(buttons [][]string) {
-	tn.markupMu.Lock()
-	defer tn.markupMu.Unlock()
-	if len(buttons) == 0 {
-		tn.replyMarkup = nil
-		return
-	}
-	keyboard := make([][]tgKeyboardButton, len(buttons))
-	for i, row := range buttons {
-		keyboard[i] = make([]tgKeyboardButton, len(row))
-		for j, btn := range row {
-			keyboard[i][j] = tgKeyboardButton{Text: btn}
-		}
-	}
-	tn.replyMarkup = &tgReplyKeyboardMarkup{
-		Keyboard:       keyboard,
-		ResizeKeyboard: true,
-		IsPersistent:   true,
-	}
 }
 
 func (tn *TelegramNotifier) SetInlineKeyboard(buttons [][]InlineButton) {
@@ -371,19 +339,12 @@ func (tn *TelegramNotifier) EditMessageText(ctx context.Context, messageID int64
 		return nil
 	}
 
-	var editMarkup any
-	if markup != nil {
-		if _, ok := markup.(*tgReplyKeyboardMarkup); !ok {
-			editMarkup = markup
-		}
-	}
-
 	payload := tgEditMessagePayload{
 		ChatID:      tn.chatID,
 		MessageID:   messageID,
 		Text:        text,
 		ParseMode:   "HTML",
-		ReplyMarkup: editMarkup,
+		ReplyMarkup: markup,
 	}
 
 	data, err := json.Marshal(payload)
@@ -596,7 +557,6 @@ func (tn *TelegramNotifier) WaitPendingDeletions() {
 	tn.deleteWg.Wait()
 }
 
-
 type tgChat struct {
 	ID int64 `json:"id"`
 }
@@ -631,10 +591,10 @@ type tgUpdatesResponse struct {
 
 var commandTextAliases = map[string]string{
 	// Keyboard buttons & friendly text
-	"📅 jadwal":        "/jadwal",
+	"📅 jadwal":         "/jadwal",
 	"jadwal":           "/jadwal",
 	"schedule":         "/jadwal",
-	"📝 tugas":         "/tugas",
+	"📝 tugas":          "/tugas",
 	"tugas":            "/tugas",
 	"tasks":            "/tugas",
 	"task":             "/tugas",
@@ -642,7 +602,7 @@ var commandTextAliases = map[string]string{
 	"presensi kelas":   "/presensi_kelas",
 	"presensi_kelas":   "/presensi_kelas",
 	"roster":           "/presensi_kelas",
-	"📊 rekap":         "/rekap",
+	"📊 rekap":          "/rekap",
 	"rekap":            "/rekap",
 	"rekapitulasi":     "/rekap",
 	"⚡ scan presensi":  "/check",
@@ -652,44 +612,44 @@ var commandTextAliases = map[string]string{
 	"📌 hari ini":       "/today",
 	"hari ini":         "/today",
 	"today":            "/today",
-	"📚 materi":        "/materi",
+	"📚 materi":         "/materi",
 	"materi":           "/materi",
 	"materials":        "/materi",
-	"📢 pengumuman":    "/pengumuman",
+	"📢 pengumuman":     "/pengumuman",
 	"pengumuman":       "/pengumuman",
 	"announcements":    "/pengumuman",
 	"announcement":     "/pengumuman",
 	"ℹ️ status":        "/status",
 	"status":           "/status",
-	"❓ bantuan":       "/help",
+	"❓ bantuan":        "/help",
 	"bantuan":          "/help",
 	"help":             "/help",
 	"start":            "/start",
 	// Secondary commands
-	"🎓 ujian":         "/ujian",
-	"ujian":            "/ujian",
-	"exams":            "/ujian",
-	"exam":             "/ujian",
-	"📖 mata kuliah":   "/courses",
-	"mata kuliah":      "/courses",
-	"matkul":           "/courses",
-	"courses":          "/courses",
-	"👤 profil":        "/whoami",
-	"profil":           "/whoami",
-	"profile":          "/whoami",
-	"whoami":           "/whoami",
-	"🔄 relogin":       "/relogin",
-	"relogin":          "/relogin",
-	"⏸️ pause":         "/pause",
-	"pause":            "/pause",
-	"jeda":             "/pause",
-	"▶️ resume":        "/resume",
-	"resume":           "/resume",
-	"lanjut":           "/resume",
-	"🛠️ debug":        "/debug",
-	"debug":            "/debug",
-	"🏓 ping":          "/ping",
-	"ping":             "/ping",
+	"🎓 ujian":       "/ujian",
+	"ujian":         "/ujian",
+	"exams":         "/ujian",
+	"exam":          "/ujian",
+	"📖 mata kuliah": "/courses",
+	"mata kuliah":   "/courses",
+	"matkul":        "/courses",
+	"courses":       "/courses",
+	"👤 profil":      "/whoami",
+	"profil":        "/whoami",
+	"profile":       "/whoami",
+	"whoami":        "/whoami",
+	"🔄 relogin":     "/relogin",
+	"relogin":       "/relogin",
+	"⏸️ pause":      "/pause",
+	"pause":         "/pause",
+	"jeda":          "/pause",
+	"▶️ resume":     "/resume",
+	"resume":        "/resume",
+	"lanjut":        "/resume",
+	"🛠️ debug":      "/debug",
+	"debug":         "/debug",
+	"🏓 ping":        "/ping",
+	"ping":          "/ping",
 }
 
 func parseCommand(text string) string {
