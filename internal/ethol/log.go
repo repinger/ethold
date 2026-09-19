@@ -43,6 +43,7 @@ type PrettyHandler struct {
 	mu     *sync.Mutex
 	attrs  []slog.Attr
 	groups []string
+	prefix string
 }
 
 // NewPrettyHandler returns a new PrettyHandler writing to w.
@@ -97,12 +98,13 @@ func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 	defer bufPool.Put(buf)
 
 	// Timestamp
-	timeStr := r.Time.Format("15:04:05")
+	var timeBuf [8]byte
+	timeFormatted := r.Time.AppendFormat(timeBuf[:0], "15:04:05")
 	if h.opts.NoColor {
-		buf.WriteString(timeStr)
+		buf.Write(timeFormatted)
 	} else {
 		buf.WriteString(ansiGray)
-		buf.WriteString(timeStr)
+		buf.Write(timeFormatted)
 		buf.WriteString(ansiReset)
 	}
 	buf.WriteByte(' ')
@@ -114,9 +116,6 @@ func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 	// Message
 	buf.WriteString(r.Message)
 
-	// Pre-formatted group prefix
-	groupPrefix := h.groupPrefix()
-
 	// Attached attributes
 	for _, attr := range h.attrs {
 		h.appendAttr(buf, "", attr)
@@ -124,7 +123,7 @@ func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 
 	// Record attributes
 	r.Attrs(func(attr slog.Attr) bool {
-		h.appendAttr(buf, groupPrefix, attr)
+		h.appendAttr(buf, h.prefix, attr)
 		return true
 	})
 
@@ -136,19 +135,12 @@ func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 	return err
 }
 
-func (h *PrettyHandler) groupPrefix() string {
-	if len(h.groups) == 0 {
-		return ""
-	}
-	return strings.Join(h.groups, ".") + "."
-}
-
 // WithAttrs returns a new handler with the given attributes added.
 func (h *PrettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	if len(attrs) == 0 {
 		return h
 	}
-	prefix := h.groupPrefix()
+	prefix := h.prefix
 	newAttrs := make([]slog.Attr, len(h.attrs), len(h.attrs)+len(attrs))
 	copy(newAttrs, h.attrs)
 	for _, a := range attrs {
@@ -162,6 +154,7 @@ func (h *PrettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 		mu:     h.mu,
 		attrs:  newAttrs,
 		groups: h.groups,
+		prefix: h.prefix,
 	}
 }
 
@@ -180,6 +173,7 @@ func (h *PrettyHandler) WithGroup(name string) slog.Handler {
 		mu:     h.mu,
 		attrs:  h.attrs,
 		groups: newGroups,
+		prefix: strings.Join(newGroups, ".") + ".",
 	}
 }
 
