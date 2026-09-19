@@ -14,6 +14,9 @@ go test -run='^$' -bench=. -benchmem ./internal/ethol      # all benchmarks
 go test -run='^$' -bench=BenchmarkFoo -benchmem ./internal/ethol # single benchmark
 go vet ./...                                               # vet
 golangci-lint run ./...                                    # lint
+golangci-lint run --build-tags dev ./...                   # lint dev build
+go run golang.org/x/tools/cmd/deadcode@latest ./...        # dead code analysis
+go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./... # dev build dead code analysis
 ```
 
 Linter config at `.golangci.yml`. Tests use `t.TempDir()` for isolation; no external services or fixtures required.
@@ -59,6 +62,10 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
   - AI agents MUST run relevant benchmarks before modifying code to establish a baseline (`go test -run='^$' -bench=. -benchmem ./internal/ethol`).
   - After making modifications, re-run benchmarks and compare `ns/op`, `B/op`, and `allocs/op`.
   - If results show performance regression compared to baseline, the agent MUST revise and optimize the implementation until performance matches or improves upon baseline before completing work.
+- Dead & unused code elimination:
+  - AI agents MUST scan for and remove dead, unreachable, or obsolete code (functions, methods, types, fields, parameters, constants) before finalizing changes.
+  - Verify both default and `-tags dev` build configurations using `deadcode` (`go run golang.org/x/tools/cmd/deadcode@latest ./...`) and `golangci-lint run --build-tags dev ./...`.
+  - Do not leave unused production symbols behind; code solely used by tests must either move to `*_test.go` or be eliminated.
 - All code in one flat package under `internal/ethol` — no sub-packages
 - Config via `.env` file (custom parser, not third-party); see `.env.example`
 - State persisted as atomic JSON writes to `attended_keys.json`
