@@ -221,8 +221,8 @@ The academic module queries academic information including timetables, assignmen
 - `(am *AcademicManager) GetAnnouncements(ctx)`: Fetches campus announcements (`academic_announcements.go`).
 - `(am *AcademicManager) FormatAnnouncementsText(ctx)`: Formats campus announcements message (`academic_announcements.go`).
 - `(am *AcademicManager) FormatAttendanceStatsText(ctx, now, year, semester, studentID, courses)`: Computes and formats attendance statistics (`academic_attendance.go`).
-- `(am *AcademicManager) GetAttendanceRoster(ctx, course, key)`: Fetches attendees for a session (`academic_attendance.go`).
-- `FormatRosterText(course, key, attendees, totalEnrolled)`: Standalone formatter for session attendee roster (`academic_attendance.go`).
+- `(am *AcademicManager) GetAttendanceRoster(ctx, course, key)`: Fetches attendees and absentees for a session (`academic_attendance.go`).
+- `FormatRosterText(course, key, attendees, absentees, totalEnrolled)`: Standalone formatter for session attendee and absentee roster (`academic_attendance.go`).
 - `(am *AcademicManager) FormatScheduleText(ctx, now, year, semester)`: Formats full schedule message (`academic_schedule.go`).
 - `(am *AcademicManager) FormatTasksText(ctx, courses)`: Formats pending assignments message (`academic_tasks.go`).
 - `(am *AcademicManager) FormatMaterialsText(ctx, courses)`: Formats materials and recorded video links (`academic_materials.go`).

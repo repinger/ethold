@@ -368,9 +368,9 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			for _, c := range courses {
 				key, open, checkErr := s.presence.CheckCourse(ctx, c)
 				if checkErr == nil && open && key != "" {
-					attendees, total, rErr := s.academic.GetAttendanceRoster(ctx, c, key)
+					attendees, absentees, total, rErr := s.academic.GetAttendanceRoster(ctx, c, key)
 					if rErr == nil {
-						activeReports = append(activeReports, FormatRosterText(c, key, attendees, total))
+						activeReports = append(activeReports, FormatRosterText(c, key, attendees, absentees, total))
 					}
 				}
 			}

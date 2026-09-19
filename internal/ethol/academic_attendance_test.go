@@ -173,6 +173,10 @@ func TestAcademicManager_AttendanceRoster(t *testing.T) {
 				{"nrp": "3122500001", "nama": "Ahmad Fauzi"},
 				{"nrp": "3122500002", "nama": "Budi Santoso"}
 			]`))
+		case "/api/presensi/daftar-mahasiswa-tidak-hadir-kuliah":
+			w.Write([]byte(`[
+				{"nrp": "3122500003", "nama": "Citra Dewi"}
+			]`))
 		case "/api/presensi/jumlah-mahasiswa-per-kuliah":
 			w.Write([]byte(`{"jumlah": 30}`))
 		default:
@@ -190,7 +194,7 @@ func TestAcademicManager_AttendanceRoster(t *testing.T) {
 	ctx := context.Background()
 	course := Course{Nomor: 501, JenisSchema: 0, Matakuliah: "Algoritma Pemrograman"}
 
-	attendees, total, err := am.GetAttendanceRoster(ctx, course, "TESTKEY123")
+	attendees, absentees, total, err := am.GetAttendanceRoster(ctx, course, "TESTKEY123")
 	if err != nil {
 		t.Fatalf("GetAttendanceRoster error: %v", err)
 	}
@@ -200,28 +204,53 @@ func TestAcademicManager_AttendanceRoster(t *testing.T) {
 	if attendees[0].NRP != "3122500001" || attendees[0].Nama != "Ahmad Fauzi" {
 		t.Errorf("unexpected attendee 0: %+v", attendees[0])
 	}
+	if len(absentees) != 1 {
+		t.Fatalf("expected 1 absentee, got %d", len(absentees))
+	}
+	if absentees[0].NRP != "3122500003" || absentees[0].Nama != "Citra Dewi" {
+		t.Errorf("unexpected absentee 0: %+v", absentees[0])
+	}
 	if total != 30 {
 		t.Errorf("expected 30 total enrolled, got %d", total)
 	}
 
-	// Format roster text with attendees
-	txt := FormatRosterText(course, "TESTKEY123", attendees, total)
+	// Format roster text with attendees and absentees
+	txt := FormatRosterText(course, "TESTKEY123", attendees, absentees, total)
 	if !strings.Contains(txt, "Algoritma Pemrograman") || !strings.Contains(txt, "2 / 30 Mahasiswa Hadir") || !strings.Contains(txt, "Ahmad Fauzi") {
 		t.Errorf("unexpected formatted roster text: %s", txt)
 	}
+	if !strings.Contains(txt, "Belum Presensi (1)") || !strings.Contains(txt, "Citra Dewi") {
+		t.Errorf("expected roster text to include absentees section: %s", txt)
+	}
 
-	// Format roster text without attendees
-	emptyTxt := FormatRosterText(course, "EMPTYKEY", nil, total)
+	// Format roster text without attendees but with absentees
+	unattendedTxt := FormatRosterText(course, "EMPTYKEY", nil, absentees, total)
+	if !strings.Contains(unattendedTxt, "Belum ada mahasiswa yang tercatat hadir") || !strings.Contains(unattendedTxt, "Belum Presensi (1)") {
+		t.Errorf("unexpected unattended roster text: %s", unattendedTxt)
+	}
+
+	// Format roster text without attendees and without absentees
+	emptyTxt := FormatRosterText(course, "EMPTYKEY", nil, nil, total)
 	if !strings.Contains(emptyTxt, "Belum ada mahasiswa yang tercatat hadir") {
 		t.Errorf("unexpected empty roster text: %s", emptyTxt)
 	}
 
-	// Format roster text with >100 attendees
-	largeAttendees := make([]RosterItem, 120)
-	for i := range largeAttendees {
-		largeAttendees[i] = RosterItem{NRP: fmt.Sprintf("NRP%d", i+1), Nama: fmt.Sprintf("Mhs %d", i+1)}
+	// Format roster text when everyone has attended
+	allAttended := make([]RosterItem, 30)
+	for i := range allAttended {
+		allAttended[i] = RosterItem{NRP: fmt.Sprintf("NRP%d", i+1), Nama: fmt.Sprintf("Mhs %d", i+1)}
 	}
-	largeTxt := FormatRosterText(course, "LARGEKEY", largeAttendees, 120)
+	allTxt := FormatRosterText(course, "ALLKEY", allAttended, nil, 30)
+	if !strings.Contains(allTxt, "Semua mahasiswa sudah hadir") {
+		t.Errorf("expected all attended message in: %s", allTxt)
+	}
+
+	// Format roster text with >100 attendees and >100 absentees
+	largeList := make([]RosterItem, 120)
+	for i := range largeList {
+		largeList[i] = RosterItem{NRP: fmt.Sprintf("NRP%d", i+1), Nama: fmt.Sprintf("Mhs %d", i+1)}
+	}
+	largeTxt := FormatRosterText(course, "LARGEKEY", largeList, largeList, 240)
 	if !strings.Contains(largeTxt, "100. NRP100 - <b>Mhs 100</b>") {
 		t.Errorf("expected 100th attendee in roster text, got: %s", largeTxt)
 	}
@@ -239,7 +268,24 @@ func TestAcademicManager_AttendanceRoster(t *testing.T) {
 	defer unauthServer.Close()
 
 	unauthAM := NewAcademicManager(client, unauthServer.URL, 5*time.Minute)
-	if _, _, err := unauthAM.GetAttendanceRoster(ctx, course, "KEY"); !errors.Is(err, ErrUnauthorized) {
+	if _, _, _, err := unauthAM.GetAttendanceRoster(ctx, course, "KEY"); !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized for roster, got %v", err)
+	}
+}
+
+func BenchmarkFormatRosterText(b *testing.B) {
+	course := Course{Nomor: 501, Matakuliah: "Algoritma Pemrograman"}
+	attendees := make([]RosterItem, 25)
+	for i := range attendees {
+		attendees[i] = RosterItem{NRP: fmt.Sprintf("31225000%02d", i+1), Nama: fmt.Sprintf("Mahasiswa %d", i+1)}
+	}
+	absentees := make([]RosterItem, 5)
+	for i := range absentees {
+		absentees[i] = RosterItem{NRP: fmt.Sprintf("31225000%02d", i+26), Nama: fmt.Sprintf("Mahasiswa %d", i+26)}
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = FormatRosterText(course, "KEY123", attendees, absentees, 30)
 	}
 }

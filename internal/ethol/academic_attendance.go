@@ -45,27 +45,35 @@ type lecturerHistoryItem struct {
 	Tanggal        string `json:"tanggal"`
 }
 
-func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, key string) ([]RosterItem, int, error) {
+func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, key string) ([]RosterItem, []RosterItem, int, error) {
 	var (
 		attendees     []RosterItem
+		absentees     []RosterItem
 		rosterErr     error
 		totalEnrolled int
 		wg            sync.WaitGroup
+		errOnce       sync.Once
 	)
 
-	wg.Add(2)
+	setRosterErr := func(err error) {
+		errOnce.Do(func() {
+			rosterErr = err
+		})
+	}
+
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		rosterURL := fmt.Sprintf("%s/api/presensi/daftar-mahasiswa-hadir-kuliah?key=%s", am.baseURL, url.QueryEscape(key))
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rosterURL, nil)
 		if err != nil {
-			rosterErr = fmt.Errorf("create roster req: %w", err)
+			setRosterErr(fmt.Errorf("create roster req: %w", err))
 			return
 		}
 
 		resp, err := am.client.Do(req)
 		if err != nil {
-			rosterErr = fmt.Errorf("fetch roster: %w", err)
+			setRosterErr(fmt.Errorf("fetch roster: %w", err))
 			return
 		}
 		defer func() {
@@ -74,7 +82,7 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 		}()
 
 		if resp.StatusCode == http.StatusUnauthorized {
-			rosterErr = ErrUnauthorized
+			setRosterErr(ErrUnauthorized)
 			return
 		}
 
@@ -84,6 +92,41 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 				for _, item := range items {
 					if item.NRP != "" || item.Nama != "" {
 						attendees = append(attendees, item)
+					}
+				}
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		absentURL := fmt.Sprintf("%s/api/presensi/daftar-mahasiswa-tidak-hadir-kuliah?key=%s&kuliah=%d&jenis_schema=%d",
+			am.baseURL, url.QueryEscape(key), c.Nomor, c.JenisSchema)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, absentURL, nil)
+		if err != nil {
+			return
+		}
+
+		resp, err := am.client.Do(req)
+		if err != nil {
+			return
+		}
+		defer func() {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+		}()
+
+		if resp.StatusCode == http.StatusUnauthorized {
+			setRosterErr(ErrUnauthorized)
+			return
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			var items []RosterItem
+			if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err == nil {
+				for _, item := range items {
+					if item.NRP != "" || item.Nama != "" {
+						absentees = append(absentees, item)
 					}
 				}
 			}
@@ -126,15 +169,19 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 	wg.Wait()
 
 	if rosterErr != nil {
-		return nil, 0, rosterErr
+		return nil, nil, 0, rosterErr
 	}
 
-	return attendees, totalEnrolled, nil
+	if totalEnrolled == 0 && (len(attendees) > 0 || len(absentees) > 0) {
+		totalEnrolled = len(attendees) + len(absentees)
+	}
+
+	return attendees, absentees, totalEnrolled, nil
 }
 
-func FormatRosterText(c Course, key string, attendees []RosterItem, totalEnrolled int) string {
+func FormatRosterText(c Course, key string, attendees, absentees []RosterItem, totalEnrolled int) string {
 	var sb strings.Builder
-	sb.Grow(len(attendees)*64 + 128)
+	sb.Grow((len(attendees)+len(absentees))*64 + 256)
 	totalStr := ""
 	if totalEnrolled > 0 {
 		totalStr = fmt.Sprintf(" / %d", totalEnrolled)
@@ -144,30 +191,60 @@ func FormatRosterText(c Course, key string, attendees []RosterItem, totalEnrolle
 	fmt.Fprintf(&sb, "🔑 <b>Key:</b> <code>%s</code>\n", html.EscapeString(key))
 	fmt.Fprintf(&sb, "📊 <b>Kehadiran:</b> %d%s Mahasiswa Hadir\n\n", len(attendees), totalStr)
 
-	if len(attendees) == 0 {
+	if len(attendees) == 0 && len(absentees) == 0 {
 		sb.WriteString("Belum ada mahasiswa yang tercatat hadir.")
 		return sb.String()
 	}
 
-	sb.WriteString("<b>Daftar Mahasiswa Hadir:</b>\n")
-	limit := len(attendees)
-	if limit > 100 {
-		limit = 100
-	}
-	for i := 0; i < limit; i++ {
-		a := attendees[i]
-		nrp := html.EscapeString(a.NRP)
-		nama := html.EscapeString(a.Nama)
-		if nrp != "" && nama != "" {
-			fmt.Fprintf(&sb, "%d. %s - <b>%s</b>\n", i+1, nrp, nama)
-		} else if nrp != "" {
-			fmt.Fprintf(&sb, "%d. <code>%s</code>\n", i+1, nrp)
-		} else {
-			fmt.Fprintf(&sb, "%d. <b>%s</b>\n", i+1, nama)
+	if len(attendees) == 0 {
+		sb.WriteString("Belum ada mahasiswa yang tercatat hadir.\n\n")
+	} else {
+		fmt.Fprintf(&sb, "<b>Daftar Mahasiswa Hadir (%d):</b>\n", len(attendees))
+		limit := len(attendees)
+		if limit > 100 {
+			limit = 100
 		}
+		for i := 0; i < limit; i++ {
+			a := attendees[i]
+			nrp := html.EscapeString(a.NRP)
+			nama := html.EscapeString(a.Nama)
+			if nrp != "" && nama != "" {
+				fmt.Fprintf(&sb, "%d. %s - <b>%s</b>\n", i+1, nrp, nama)
+			} else if nrp != "" {
+				fmt.Fprintf(&sb, "%d. <code>%s</code>\n", i+1, nrp)
+			} else {
+				fmt.Fprintf(&sb, "%d. <b>%s</b>\n", i+1, nama)
+			}
+		}
+		if len(attendees) > 100 {
+			fmt.Fprintf(&sb, "\n<i>... dan %d mahasiswa lainnya</i>", len(attendees)-100)
+		}
+		sb.WriteString("\n\n")
 	}
-	if len(attendees) > 100 {
-		fmt.Fprintf(&sb, "\n<i>... dan %d mahasiswa lainnya</i>", len(attendees)-100)
+
+	if len(absentees) > 0 {
+		fmt.Fprintf(&sb, "⏳ <b>Belum Presensi (%d):</b>\n", len(absentees))
+		limit := len(absentees)
+		if limit > 100 {
+			limit = 100
+		}
+		for i := 0; i < limit; i++ {
+			a := absentees[i]
+			nrp := html.EscapeString(a.NRP)
+			nama := html.EscapeString(a.Nama)
+			if nrp != "" && nama != "" {
+				fmt.Fprintf(&sb, "%d. %s - <b>%s</b>\n", i+1, nrp, nama)
+			} else if nrp != "" {
+				fmt.Fprintf(&sb, "%d. <code>%s</code>\n", i+1, nrp)
+			} else {
+				fmt.Fprintf(&sb, "%d. <b>%s</b>\n", i+1, nama)
+			}
+		}
+		if len(absentees) > 100 {
+			fmt.Fprintf(&sb, "\n<i>... dan %d mahasiswa lainnya</i>", len(absentees)-100)
+		}
+	} else if len(attendees) > 0 && totalEnrolled > 0 && len(attendees) >= totalEnrolled {
+		sb.WriteString("✅ <b>Semua mahasiswa sudah hadir.</b>")
 	}
 
 	return strings.TrimSpace(sb.String())

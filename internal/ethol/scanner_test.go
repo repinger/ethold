@@ -326,6 +326,10 @@ func TestScanner_MaterialsAndRosterCommands(t *testing.T) {
 				{"nrp": "3120600001", "nama": "Budi"},
 				{"nrp": "3120600002", "nama": "Siti"},
 			})
+		case "/api/presensi/daftar-mahasiswa-tidak-hadir-kuliah":
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"nrp": "3120600003", "nama": "Dewi"},
+			})
 		case "/api/presensi/jumlah-mahasiswa-per-kuliah":
 			json.NewEncoder(w).Encode(map[string]any{"jumlah": 25})
 		case "/api/presensi/mahasiswa":
@@ -384,7 +388,9 @@ func TestScanner_MaterialsAndRosterCommands(t *testing.T) {
 	if !strings.Contains(rosterResp, "Algoritma &amp; Pemrograman") ||
 		!strings.Contains(rosterResp, "active-key-501") ||
 		!strings.Contains(rosterResp, "2 / 25 Mahasiswa Hadir") ||
-		!strings.Contains(rosterResp, "Budi") {
+		!strings.Contains(rosterResp, "Budi") ||
+		!strings.Contains(rosterResp, "Belum Presensi (1)") ||
+		!strings.Contains(rosterResp, "Dewi") {
 		t.Errorf("unexpected /presensi_kelas response: %s", rosterResp)
 	}
 

@@ -468,7 +468,7 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 			}
 			respText := msg
 			if s.academic != nil {
-				if attendees, total, rErr := s.academic.GetAttendanceRoster(ctx, res.course, res.key); rErr == nil && len(attendees) > 0 {
+				if attendees, _, total, rErr := s.academic.GetAttendanceRoster(ctx, res.course, res.key); rErr == nil && len(attendees) > 0 {
 					if total > 0 {
 						respText = fmt.Sprintf("%s (%d/%d hadir)", msg, len(attendees), total)
 					} else {
