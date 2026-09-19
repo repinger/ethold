@@ -163,9 +163,9 @@ func NewHTTPClient() (*http.Client, error) {
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		ForceAttemptHTTP2:   true,
-		MaxIdleConns:        64,
-		MaxIdleConnsPerHost: 32,
-		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 6,
+		IdleConnTimeout:     45 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
 
