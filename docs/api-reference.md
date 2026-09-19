@@ -111,45 +111,64 @@ All endpoints use the base URL `https://ethol.pens.ac.id`.
 - **Method:** `GET`
 - **Description:** Returns all dates on which the lecturer conducted class attendance.
 
+### 12. Student Home Attendance Stats
+- **Path:** `/api/presensi/stat-beranda-mahasiswa?tahun={year}&semester={sem}`
+- **Method:** `GET`
+- **Description:** Returns official aggregated semester attendance summary and session counts.
+
 ---
 
 ## Academic Information Endpoints
 
-### 12. Class Schedule
+### 13. Class Schedule
 - **Path:** `/api/jadwal/jadwal-online?tahun={year}&semester={sem}`
 - **Method:** `GET`
 - **Description:** Returns weekly class schedule items with day and time boundaries.
 
-### 13. Course Tasks
+### 14. Exam Schedule
+- **Path:** `/api/ujian/daftar-ujian?tahun={year}&semester={sem}&jenis={jenis}`
+- **Method:** `GET`
+- **Query Parameters:**
+  - `tahun`: Academic year (integer).
+  - `semester`: Academic semester (integer: 1 or 2).
+  - `jenis`: Exam type (1 = UTS / Midterms, 2 = UAS / Finals).
+- **Description:** Returns online exam schedule entries including date, duration, room, and lecturer.
+
+### 15. Course Tasks
 - **Path:** `/api/tugas?kuliah={kuliahId}&jenisSchema={schema}`
 - **Method:** `GET`
 - **Description:** Returns course assignments and student submission status.
 
-### 14. Course Materials
+### 16. Course Materials
 - **Path:** `/api/materi?matakuliah={kuliahId}&jenis_schema={schema}`
 - **Method:** `GET`
 - **Description:** Returns downloadable documents and presentation slides.
 
-### 15. Course Videos
+### 17. Course Videos
 - **Path:** `/api/video?kuliah={kuliahId}&jenis_schema={schema}`
 - **Method:** `GET`
 - **Description:** Returns links to recorded video lectures.
+
+### 18. Campus Announcements
+- **Path:** `/api/pengumuman-admin`
+- **Method:** `GET`
+- **Description:** Returns campus-wide official announcements and important bulletin notifications.
 
 ---
 
 ## Notification Endpoints
 
-### 16. Unread Notifications Count
+### 19. Unread Notifications Count
 - **Path:** `/api/notifikasi/mahasiswa-belum-baca`
 - **Method:** `GET`
 - **Description:** Returns the count of unread notifications for the user.
 
-### 17. List Notifications
+### 20. List Notifications
 - **Path:** `/api/notifikasi/mahasiswa?filterNotif=SEMUA`
 - **Method:** `GET`
 - **Description:** Returns all notifications for the student account.
 
-### 18. Mark Notifications Read
+### 21. Mark Notifications Read
 - **Path:** `/api/notifikasi/mahasiswa-baca-notif`
 - **Method:** `PUT`
 - **Description:** Marks pending notifications as read on the server.

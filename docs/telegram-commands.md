@@ -68,11 +68,17 @@ Interactive command interactions are limited to a 3-command batch window. Upon r
 #### `/jadwal`
 - **Description:** Shows the complete weekly class timetable grouped by day.
 
+#### `/ujian`
+- **Description:** Displays scheduled midterm (UTS) and final (UAS) online exam timetables with time windows, room, and lecturer.
+
 #### `/tugas`
-- **Description:** Lists open and pending assignments across all enrolled courses with due dates.
+- **Description:** Lists open and pending assignments across all enrolled courses with sorted deadlines and urgency indicators.
 
 #### `/materi`
 - **Description:** Lists uploaded lecture materials and recorded video links.
+
+#### `/pengumuman`
+- **Description:** Displays active campus announcements and important administrative bulletins.
 
 #### `/presensi_kelas`
 - **Description:** Shows the student attendee list and attendance count for the currently active class session (requires `ETHOL_AUTO_PRESENCE=true`).

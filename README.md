@@ -87,11 +87,14 @@ When `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` are configured, the daemon listens 
 | Command           | Description                                                                      |
 | ----------------- | -------------------------------------------------------------------------------- |
 | `/status`         | Shows daemon status (active/paused), uptime, mode/interval, last scan, and count |
+| `/debug`          | Shows system diagnostics, memory, goroutines, and cache statistics               |
 | `/check`          | Triggers an immediate presence scan cycle                                        |
 | `/courses`        | Lists enrolled courses and lecturers currently monitored                         |
 | `/jadwal`         | Displays weekly class schedule with lecturer, time, and room                     |
-| `/tugas`          | Lists pending assignments with deadlines and submission links                    |
+| `/ujian`          | Displays scheduled midterm (UTS) and final (UAS) online exam timetables          |
+| `/tugas`          | Lists pending assignments with sorted deadlines, urgency badges, and links       |
 | `/materi`         | Lists uploaded lecture materials (PDFs, docs, links) and videos                  |
+| `/pengumuman`     | Displays official campus announcements and important bulletins                   |
 | `/presensi_kelas` | Displays live attendance roster and count for active class sessions              |
 | `/rekap`          | Official attendance rate and per-course session breakdown                        |
 | `/whoami`         | Displays linked student profile (Name, NRP, ID)                                  |

@@ -16,8 +16,10 @@ This document describes each module in the `internal/ethol` package.
 | `commands.go` | Routes and formats Telegram bot commands. |
 | `academic.go` | Academic manager struct, cache lifecycle, and common utilities. |
 | `academic_schedule.go` | Retrieves timetable schedules, matches active courses, and formats schedule views. |
+| `academic_exams.go` | Queries UTS/UAS exam schedules and formats exam timetables. |
 | `academic_tasks.go` | Queries course assignments, validates submission status, and formats task lists. |
 | `academic_materials.go` | Fetches lecture materials, video recordings, and formats material lists. |
+| `academic_announcements.go` | Fetches campus-wide announcements and formats bulletin updates. |
 | `academic_attendance.go` | Computes attendance statistics, retrieves class rosters, and formats recap data. |
 | `academic_notif.go` | Polls ETHOL notifications, marks items as read, and handles alert dispatch. |
 | `debug.go` | Handles the `/debug` Telegram command, reporting runtime diagnostics. |
@@ -185,18 +187,22 @@ The academic module queries academic information including timetables, assignmen
 
 - `academic.go`: Defines `AcademicManager`, cache containers, TTL cache invalidation, and common parsing utilities.
 - `academic_schedule.go`: Queries class timetables, formats schedule views, and determines currently active courses by comparing clock ranges against current WIB time.
-- `academic_tasks.go`: Retrieves assignment lists across courses, checks individual student submission status, filters open deadlines, and formats task messages.
+- `academic_exams.go`: Retrieves midterm (UTS) and final (UAS) examination schedules, sorting by date and formatting exam timetables.
+- `academic_tasks.go`: Retrieves assignment lists across courses, checks individual student submission status, sorts by deadline, highlights urgent tasks, and formats task messages.
 - `academic_materials.go`: Fetches downloadable lecture files and external video links for monitored courses, formatting them with HTML links.
-- `academic_attendance.go`: Queries student attendance history (`riwayat`), calculates semester attendance percentages, and inspects live class attendance rosters.
+- `academic_announcements.go`: Fetches official campus bulletins and important notifications, stripping HTML tags and formatting announcement views.
+- `academic_attendance.go`: Queries official attendance dashboard stats (`stat-beranda-mahasiswa`) and course history (`riwayat`), calculates semester attendance percentages, and inspects live class attendance rosters.
 - `academic_notif.go`: Manages background polling of ETHOL notifications, tracking seen IDs to prevent duplicate alerts, and triggering callbacks on new presence, task, or other system notifications.
 
 ### Key Types
 
 - `AcademicManager`: Central coordinator struct managing HTTP client, caches, and sync locks.
 - `ScheduleItem`: Represents a scheduled class period.
+- `ExamItem`: Represents an exam session with course, time window, room, and lecturer.
 - `TaskItem`: Represents an assignment with due dates and submission state.
 - `MaterialItem`: Represents course documents and lecture slides.
 - `VideoItem`: Represents recorded lectures.
+- `AnnouncementItem`: Represents campus administrative announcement bulletins.
 - `RosterItem`: Contains attendee student ID and name.
 - `AttendanceStats`: Contains semester and daily presence statistics.
 
@@ -206,9 +212,13 @@ The academic module queries academic information including timetables, assignmen
 - `(am *AcademicManager) GetSchedule(ctx, year, semester)`: Queries class schedules (`academic_schedule.go`).
 - `(am *AcademicManager) GetActiveCourse(ctx, now, year, semester, courses)`: Determines the current course based on timetable (`academic_schedule.go`).
 - `(am *AcademicManager) CachedActiveCourse(now, year, semester, courses)`: Non-network variant using the cached schedule only.
+- `(am *AcademicManager) GetExams(ctx, year, semester, jenis)`: Queries exam items for UTS (1) or UAS (2) (`academic_exams.go`).
+- `(am *AcademicManager) FormatExamsText(ctx, year, semester)`: Formats full exam timetable (`academic_exams.go`).
 - `(am *AcademicManager) GetPendingTasks(ctx, courses)`: Fetches open assignments (`academic_tasks.go`).
 - `(am *AcademicManager) GetCourseMaterials(ctx, courses)`: Fetches uploaded materials (`academic_materials.go`).
 - `(am *AcademicManager) GetCourseVideos(ctx, courses)`: Fetches recorded videos (`academic_materials.go`).
+- `(am *AcademicManager) GetAnnouncements(ctx)`: Fetches campus announcements (`academic_announcements.go`).
+- `(am *AcademicManager) FormatAnnouncementsText(ctx)`: Formats campus announcements message (`academic_announcements.go`).
 - `(am *AcademicManager) FormatAttendanceStatsText(ctx, now, year, semester, studentID, courses)`: Computes and formats attendance statistics (`academic_attendance.go`).
 - `(am *AcademicManager) GetAttendanceRoster(ctx, course, key)`: Fetches attendees for a session (`academic_attendance.go`).
 - `FormatRosterText(course, key, attendees, totalEnrolled)`: Standalone formatter for session attendee roster (`academic_attendance.go`).

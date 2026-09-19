@@ -31,14 +31,16 @@ internal/ethol/                  # all domain code (flat, single package)
   scheduler.go   # WIB timezone, schedule-driven windows, and scan plans
   scanner.go     # main daemon loop, worker pool, scan planning
   commands.go    # Telegram command routing and response formatting
-  academic.go            # academic manager struct, cache lifecycle
-  academic_schedule.go   # schedule, active course matching, formatting
-  academic_tasks.go      # task list, submission status, formatting
-  academic_materials.go  # materials and videos fetch, formatting
-  academic_attendance.go # class roster, attendance stats, riwayat
-  academic_notif.go      # notification polling and mark-read
-  debug.go               # /debug Telegram command, runtime diagnostics
-  log.go                 # pretty CLI log handler with color support
+  academic.go               # academic manager struct, cache lifecycle
+  academic_schedule.go      # schedule, active course matching, formatting
+  academic_exams.go         # exam schedules (UTS/UAS), formatting
+  academic_tasks.go         # task list, submission status, sorting, formatting
+  academic_materials.go     # materials and videos fetch, formatting
+  academic_announcements.go # campus announcements fetch, formatting
+  academic_attendance.go    # class roster, attendance stats, riwayat
+  academic_notif.go         # notification polling and mark-read
+  debug.go                  # /debug Telegram command, runtime diagnostics
+  log.go                    # pretty CLI log handler with color support
 
   state.go       # atomic JSON persistence (attended_keys.json)
   telegram.go    # Telegram Bot API (sendMessage, long-poll getUpdates)
