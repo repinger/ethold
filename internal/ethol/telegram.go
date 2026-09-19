@@ -75,6 +75,8 @@ type TelegramNotifier struct {
 	cmdHistoryMu  sync.Mutex
 	cmdHistory    []commandMessageRecord
 	deleteWg      sync.WaitGroup
+	markupMu      sync.RWMutex
+	replyMarkup   any
 }
 
 func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *TelegramNotifier {
@@ -99,10 +101,43 @@ func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *Te
 	}
 }
 
+type tgReplyKeyboardMarkup struct {
+	Keyboard       [][]tgKeyboardButton `json:"keyboard"`
+	ResizeKeyboard bool                 `json:"resize_keyboard"`
+	IsPersistent   bool                 `json:"is_persistent,omitempty"`
+}
+
+type tgKeyboardButton struct {
+	Text string `json:"text"`
+}
+
 type tgSendMessagePayload struct {
-	ChatID    string `json:"chat_id"`
-	Text      string `json:"text"`
-	ParseMode string `json:"parse_mode"`
+	ChatID      string `json:"chat_id"`
+	Text        string `json:"text"`
+	ParseMode   string `json:"parse_mode"`
+	ReplyMarkup any    `json:"reply_markup,omitempty"`
+}
+
+// ponytail: supports 2D text button matrix. upgrade path: inline keyboard buttons with callback_data if stateful multi-step menus needed.
+func (tn *TelegramNotifier) SetReplyKeyboard(buttons [][]string) {
+	tn.markupMu.Lock()
+	defer tn.markupMu.Unlock()
+	if len(buttons) == 0 {
+		tn.replyMarkup = nil
+		return
+	}
+	keyboard := make([][]tgKeyboardButton, len(buttons))
+	for i, row := range buttons {
+		keyboard[i] = make([]tgKeyboardButton, len(row))
+		for j, btn := range row {
+			keyboard[i][j] = tgKeyboardButton{Text: btn}
+		}
+	}
+	tn.replyMarkup = &tgReplyKeyboardMarkup{
+		Keyboard:       keyboard,
+		ResizeKeyboard: true,
+		IsPersistent:   true,
+	}
 }
 
 const maxTelegramMessageLen = 4000
@@ -162,6 +197,10 @@ func (tn *TelegramNotifier) SendMessage(ctx context.Context, text string) error 
 }
 
 func (tn *TelegramNotifier) SendMessageIDs(ctx context.Context, text string) ([]int64, error) {
+	return tn.SendMessageIDsWithMarkup(ctx, text, nil)
+}
+
+func (tn *TelegramNotifier) SendMessageIDsWithMarkup(ctx context.Context, text string, markup any) ([]int64, error) {
 	if tn.token == "" || tn.chatID == "" {
 		slog.Debug("Telegram notification skipped: token or chat_id empty")
 		return nil, nil
@@ -179,7 +218,11 @@ func (tn *TelegramNotifier) SendMessageIDs(ctx context.Context, text string) ([]
 			case <-timer.C:
 			}
 		}
-		msgID, err := tn.sendSingleMessage(ctx, chunk)
+		var msgMarkup any
+		if i == len(chunks)-1 {
+			msgMarkup = markup
+		}
+		msgID, err := tn.sendSingleMessage(ctx, chunk, msgMarkup)
 		if err != nil {
 			return msgIDs, err
 		}
@@ -215,11 +258,12 @@ func extractRetryAfter(body []byte) int {
 	return 0
 }
 
-func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string) (int64, error) {
+func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string, markup any) (int64, error) {
 	payload := tgSendMessagePayload{
-		ChatID:    tn.chatID,
-		Text:      text,
-		ParseMode: "HTML",
+		ChatID:      tn.chatID,
+		Text:        text,
+		ParseMode:   "HTML",
+		ReplyMarkup: markup,
 	}
 
 	data, err := json.Marshal(payload)
@@ -549,7 +593,10 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 		var replyIDs []int64
 		if reply != "" {
 			var err error
-			replyIDs, err = tn.SendMessageIDs(ctx, reply)
+			tn.markupMu.RLock()
+			markup := tn.replyMarkup
+			tn.markupMu.RUnlock()
+			replyIDs, err = tn.SendMessageIDsWithMarkup(ctx, reply, markup)
 			if err != nil {
 				sendErr = err
 				slog.Error("Failed to reply to Telegram command", "cmd", cmd, "error", err)

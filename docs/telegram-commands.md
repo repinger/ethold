@@ -10,6 +10,7 @@ Commands can include bot mention suffixes (for example, `/status@my_bot`).
 The command parser removes these suffixes before execution.
 Outgoing messages are rate-limited via a token bucket (burst: 3, refill: 1 message/second) and automatically split across multiple messages if exceeding 4,000 characters.
 Interactive command interactions are limited to a 3-command batch window. Upon receiving a 4th command, all previous user commands and bot responses in the cycle are purged asynchronously in the background using Telegram's `deleteMessages` API.
+Command replies automatically attach a persistent custom keyboard (`ReplyKeyboardMarkup` with `is_persistent: true` and `resize_keyboard: true`) for 1-tap command execution. The keyboard stays pinned in the Telegram client UI across message deletion cycles.
 
 ---
 

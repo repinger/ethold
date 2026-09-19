@@ -163,6 +163,21 @@ func run() error {
 	scanner := ethol.NewScanner(auth, courses, presence, academic, state, notifier, *concurrency)
 
 	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
+		if cfg.AutoPresence {
+			notifier.SetReplyKeyboard([][]string{
+				{"/jadwal", "/tugas"},
+				{"/presensi_kelas", "/rekap"},
+				{"/check", "/today"},
+				{"/status", "/help"},
+			})
+		} else {
+			notifier.SetReplyKeyboard([][]string{
+				{"/jadwal", "/tugas"},
+				{"/presensi_kelas", "/rekap"},
+				{"/materi", "/pengumuman"},
+				{"/status", "/help"},
+			})
+		}
 		go notifier.StartCommandPoller(ctx, scanner.HandleTelegramCommand)
 		go academic.StartNotificationPoller(ctx, 30*time.Second, auth.EnsureSession, func(ket string) {
 			if cfg.AutoPresence {
