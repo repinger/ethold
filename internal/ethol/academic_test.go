@@ -31,6 +31,10 @@ func TestNewAcademicManager(t *testing.T) {
 	}
 
 	am.InvalidateAttendanceCache()
+	stats := am.CacheStats()
+	if stats.ExamsCount != 0 {
+		t.Errorf("expected 0 initial exams cache count, got %+v", stats)
+	}
 }
 
 func TestParseCount(t *testing.T) {

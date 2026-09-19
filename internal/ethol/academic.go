@@ -33,6 +33,11 @@ type attendanceCacheEntry struct {
 	timestamp time.Time
 }
 
+type examCacheEntry struct {
+	items     []ExamItem
+	timestamp time.Time
+}
+
 type AcademicManager struct {
 	mu                  sync.RWMutex
 	client              *http.Client
@@ -43,6 +48,7 @@ type AcademicManager struct {
 	materialCache       map[int]materialCacheEntry      // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	videoCache          map[int]videoCacheEntry         // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	attendanceCache     map[string]attendanceCacheEntry // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
+	examCache           map[string]examCacheEntry       // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	processedNotifIDs   map[int]struct{}                // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
 	processedNotifQueue []int
 }
@@ -68,6 +74,7 @@ func NewAcademicManager(client *http.Client, baseURL string, ttl time.Duration) 
 		materialCache:     make(map[int]materialCacheEntry),
 		videoCache:        make(map[int]videoCacheEntry),
 		attendanceCache:   make(map[string]attendanceCacheEntry),
+		examCache:         make(map[string]examCacheEntry),
 		processedNotifIDs: make(map[int]struct{}),
 	}
 }
@@ -84,6 +91,7 @@ type AcademicCacheStats struct {
 	MaterialsCount  int
 	VideosCount     int
 	AttendanceCount int
+	ExamsCount      int
 	ProcessedNotifs int
 }
 
@@ -96,6 +104,7 @@ func (am *AcademicManager) CacheStats() AcademicCacheStats {
 		MaterialsCount:  len(am.materialCache),
 		VideosCount:     len(am.videoCache),
 		AttendanceCount: len(am.attendanceCache),
+		ExamsCount:      len(am.examCache),
 		ProcessedNotifs: len(am.processedNotifIDs),
 	}
 }
