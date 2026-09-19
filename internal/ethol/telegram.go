@@ -140,11 +140,20 @@ func splitMessage(text string, maxLen int) []string {
 		return []string{text}
 	}
 
-	lines := strings.Split(text, "\n")
 	var chunks []string
 	var current strings.Builder
 
-	for _, line := range lines {
+	rem := text
+	for len(rem) > 0 {
+		var line string
+		if idx := strings.IndexByte(rem, '\n'); idx >= 0 {
+			line = rem[:idx]
+			rem = rem[idx+1:]
+		} else {
+			line = rem
+			rem = ""
+		}
+
 		needed := len(line)
 		if current.Len() > 0 {
 			needed++ // for '\n'
@@ -539,10 +548,6 @@ func (tn *TelegramNotifier) DeleteMessages(ctx context.Context, messageIDs []int
 		}
 	}
 	return nil
-}
-
-func (tn *TelegramNotifier) WaitPendingDeletions() {
-	tn.deleteWg.Wait()
 }
 
 type tgChat struct {

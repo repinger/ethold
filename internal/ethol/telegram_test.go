@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+func waitPendingDeletions(tn *TelegramNotifier) {
+	tn.deleteWg.Wait()
+}
+
 func TestTelegramNotifier_PollOnce(t *testing.T) {
 	var offsetRequested atomic.Int64
 	var sentMessages []string
@@ -763,7 +767,7 @@ func TestTelegramNotifier_SingleMessageReplacementCycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PollOnce failed: %v", err)
 		}
-		tn.WaitPendingDeletions()
+		waitPendingDeletions(tn)
 	}
 
 	// Command 1 (User msg 10 -> Bot reply 501, deletes user msg 10)
@@ -885,7 +889,7 @@ func TestTelegramNotifier_BatchCleanup_OutputBeforeDeletion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PollOnce failed: %v", err)
 		}
-		tn.WaitPendingDeletions()
+		waitPendingDeletions(tn)
 	}
 
 	// Commands 1-3
@@ -1319,5 +1323,40 @@ func TestTelegramNotifier_EditMessageText_MessageNotModified(t *testing.T) {
 	err = tn.EditMessageText(context.Background(), 100, "identical text", nil)
 	if err != nil {
 		t.Fatalf("expected message is not modified to return nil, got %v", err)
+	}
+}
+
+func BenchmarkTelegram_SplitMessage(b *testing.B) {
+	var sb strings.Builder
+	for i := 0; i < 200; i++ {
+		sb.WriteString("Line ")
+		sb.WriteString(fmt.Sprintf("%d: This is a sample Telegram message line with some formatting details\n", i))
+	}
+	text := sb.String()
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = splitMessage(text, maxTelegramMessageLen)
+	}
+}
+
+func BenchmarkTelegram_SendMessageIDs(b *testing.B) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"result":{"message_id":123}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		b.Fatal(err)
+	}
+	tn := NewTelegramNotifier(client, server.URL, "token", "123")
+	ctx := context.Background()
+	msg := "Hello Telegram Notification Bench"
+
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = tn.SendMessageIDs(ctx, msg)
 	}
 }
