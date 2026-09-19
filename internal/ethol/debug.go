@@ -64,8 +64,8 @@ func (s *Scanner) handleDebug(ctx context.Context) string {
 	acadCacheStr := "Tidak tersedia"
 	if s.academic != nil {
 		cStats := s.academic.CacheStats()
-		acadCacheStr = fmt.Sprintf("Jadwal: %d, Tugas: %d, Materi: %d, Video: %d, Presensi: %d, Notif: %d",
-			cStats.SchedulesCount, cStats.TasksCount, cStats.MaterialsCount, cStats.VideosCount, cStats.AttendanceCount, cStats.ProcessedNotifs)
+		acadCacheStr = fmt.Sprintf("Jadwal: %d, Ujian: %d, Tugas: %d, Materi: %d, Video: %d, Presensi: %d, Notif: %d",
+			cStats.SchedulesCount, cStats.ExamsCount, cStats.TasksCount, cStats.MaterialsCount, cStats.VideosCount, cStats.AttendanceCount, cStats.ProcessedNotifs)
 	}
 
 	userStr := "Tidak tersedia"

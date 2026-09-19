@@ -214,6 +214,31 @@ func TestScanner_AcademicCommands(t *testing.T) {
 					"tutup": "0"
 				}
 			]`))
+		case "/api/ujian/daftar-ujian":
+			w.Write([]byte(`[
+				{
+					"nomor": 101,
+					"matakuliah": "Sistem Operasi",
+					"dosen": "Dr. OS",
+					"ruang": "Online",
+					"ujian": {
+						"nomor": 501,
+						"mulai_indonesia": "15-10-2024 08:00 WIB",
+						"selesai_indonesia": "15-10-2024 10:00 WIB"
+					}
+				}
+			]`))
+		case "/api/pengumuman-admin":
+			w.Write([]byte(`[
+				{
+					"id": 1,
+					"judul": "Pengumuman Akademik",
+					"isi_pengumuman": "Kuliah libur minggu depan.",
+					"tanggal_indonesia": "10-09-2024",
+					"is_important": 1,
+					"is_pinned": 1
+				}
+			]`))
 		case "/api/presensi/riwayat":
 			w.Write([]byte(`[{"tanggal":"09-09-2024"}]`))
 		case "/api/presensi/get-tanggal-presensi-dosen-per-semester":
@@ -261,6 +286,18 @@ func TestScanner_AcademicCommands(t *testing.T) {
 		t.Errorf("expected /tugas to contain 'Tugas OS 1', got: %s", replyTugas)
 	}
 
+	// 2a. /ujian
+	replyUjian := scanner.HandleTelegramCommand(ctx, "/ujian")
+	if !strings.Contains(replyUjian, "Sistem Operasi") || !strings.Contains(replyUjian, "JADWAL UJIAN ONLINE") {
+		t.Errorf("expected /ujian to contain 'Sistem Operasi', got: %s", replyUjian)
+	}
+
+	// 2b. /pengumuman
+	replyPengumuman := scanner.HandleTelegramCommand(ctx, "/pengumuman")
+	if !strings.Contains(replyPengumuman, "Pengumuman Akademik") || !strings.Contains(replyPengumuman, "PENGUMUMAN KAMPUS") {
+		t.Errorf("expected /pengumuman to contain 'Pengumuman Akademik', got: %s", replyPengumuman)
+	}
+
 	// 3. /rekap
 	replyRekap := scanner.HandleTelegramCommand(ctx, "/rekap")
 	if !strings.Contains(replyRekap, "Kehadiran") {
@@ -275,7 +312,7 @@ func TestScanner_AcademicCommands(t *testing.T) {
 
 	// 5. /help includes all new commands
 	replyHelp := scanner.HandleTelegramCommand(ctx, "/help")
-	for _, cmd := range []string{"/jadwal", "/tugas", "/rekap", "/relogin"} {
+	for _, cmd := range []string{"/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/rekap", "/relogin"} {
 		if !strings.Contains(replyHelp, cmd) {
 			t.Errorf("expected /help to mention %s, got: %s", cmd, replyHelp)
 		}

@@ -23,8 +23,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 				"• /debug - Diagnostik sistem dan informasi debug\n" +
 				"• /courses - Daftar mata kuliah yang terdaftar\n" +
 				"• /jadwal - Jadwal perkuliahan hari ini & minggu ini\n" +
+				"• /ujian - Jadwal ujian online (UTS & UAS)\n" +
 				"• /tugas - Daftar tugas perkuliahan aktif\n" +
 				"• /materi - Materi & dokumen perkuliahan\n" +
+				"• /pengumuman - Pengumuman resmi kampus\n" +
 				"• /presensi_kelas - Daftar kehadiran sesi presensi aktif\n" +
 				"• /rekap - Rekap kehadiran semester aktif\n" +
 				"• /whoami - Informasi akun ETHOL yang terhubung\n" +
@@ -39,8 +41,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			"• /check - Jalankan scanning presensi sekarang\n" +
 			"• /courses - Daftar mata kuliah yang terdaftar\n" +
 			"• /jadwal - Jadwal perkuliahan hari ini & minggu ini\n" +
+			"• /ujian - Jadwal ujian online (UTS & UAS)\n" +
 			"• /tugas - Daftar tugas perkuliahan aktif\n" +
 			"• /materi - Materi & dokumen perkuliahan\n" +
+			"• /pengumuman - Pengumuman resmi kampus\n" +
 			"• /presensi_kelas - Daftar kehadiran sesi presensi aktif\n" +
 			"• /rekap - Rekap kehadiran semester aktif\n" +
 			"• /whoami - Informasi akun ETHOL yang terhubung\n" +
@@ -256,6 +260,28 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		}
 		return msg
 
+	case "/ujian":
+		if s.academic == nil {
+			return "❌ Fitur jadwal ujian tidak tersedia."
+		}
+		loadUjian := func() (string, error) {
+			tahun, semester, err := s.courses.ActivePeriod(ctx)
+			if err != nil {
+				return "", err
+			}
+			return s.academic.FormatExamsText(ctx, tahun, semester)
+		}
+		msg, err := loadUjian()
+		if errors.Is(err, ErrUnauthorized) {
+			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
+				msg, err = loadUjian()
+			}
+		}
+		if err != nil {
+			return fmt.Sprintf("❌ <b>Gagal Mengambil Jadwal Ujian:</b> %s", html.EscapeString(err.Error()))
+		}
+		return msg
+
 	case "/tugas":
 		if s.academic == nil {
 			return "❌ Fitur tugas akademik tidak tersedia."
@@ -297,6 +323,24 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		}
 		if err != nil {
 			return fmt.Sprintf("❌ <b>Gagal Mengambil Materi:</b> %s", html.EscapeString(err.Error()))
+		}
+		return msg
+
+	case "/pengumuman":
+		if s.academic == nil {
+			return "❌ Fitur pengumuman kampus tidak tersedia."
+		}
+		loadPengumuman := func() (string, error) {
+			return s.academic.FormatAnnouncementsText(ctx)
+		}
+		msg, err := loadPengumuman()
+		if errors.Is(err, ErrUnauthorized) {
+			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
+				msg, err = loadPengumuman()
+			}
+		}
+		if err != nil {
+			return fmt.Sprintf("❌ <b>Gagal Mengambil Pengumuman:</b> %s", html.EscapeString(err.Error()))
 		}
 		return msg
 
