@@ -9,6 +9,9 @@ services:
     #   - ETHOL_PASSWORD=secret_password_here
     #   - TELEGRAM_TOKEN=123456:ABC-DEF
     #   - TELEGRAM_CHAT_ID=987654321
+    #   - TELEGRAM_COMMAND_THREAD_ID=0
+    #   - TELEGRAM_NOTIF_THREAD_ID=0
+    #   - ETHOL_AUTO_PRESENCE=true
     #   - GOMEMLIMIT=48MiB # recommended for 64MB container limits
     # tty: true # enable ANSI colors in docker logs
     env_file:
