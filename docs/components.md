@@ -225,6 +225,7 @@ The academic module queries academic information including timetables, assignmen
 - `(am *AcademicManager) FormatScheduleText(ctx, now, year, semester)`: Formats full schedule message (`academic_schedule.go`).
 - `(am *AcademicManager) FormatTasksText(ctx, courses)`: Formats pending assignments message (`academic_tasks.go`).
 - `(am *AcademicManager) FormatMaterialsText(ctx, courses)`: Formats materials and recorded video links (`academic_materials.go`).
+- `(am *AcademicManager) InitNotificationBaseline(ctx)`: Snapshots existing unread notification IDs on startup without dispatching alerts (`academic_notif.go`).
 - `(am *AcademicManager) StartNotificationPoller(ctx, interval, authFn, onPres, onTask, onOther)`: Periodically polls ETHOL notifications (`academic_notif.go`).
 - `(am *AcademicManager) InvalidateAttendanceCache()`: Clears the attendance stats cache; called after a successful presence submission (`academic.go`).
 - `(am *AcademicManager) CacheStats() AcademicCacheStats`: Returns entry counts for all in-memory caches (`academic.go`).

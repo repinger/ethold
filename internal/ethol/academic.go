@@ -58,6 +58,7 @@ type AcademicManager struct {
 	processedNotifIDs   map[string]struct{} // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
 	processedNotifQueue []string
 	notifHead           int
+	notifBaselineDone   bool
 }
 
 const (

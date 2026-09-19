@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -398,6 +399,178 @@ func TestAcademicManager_BoundedNotificationMemory(t *testing.T) {
 	}
 	if count != qLen {
 		t.Errorf("expected processedNotifIDs count (%d) to match queue length (%d)", count, qLen)
+	}
+}
+
+func TestAcademicManager_InitNotificationBaseline(t *testing.T) {
+	var readMarked []string
+	var serverItems []map[string]any
+	var mu sync.Mutex
+
+	serverItems = []map[string]any{
+		{
+			"idNotifikasi":   "baseline-1",
+			"kodeNotifikasi": "PRESENSI-KULIAH",
+			"keterangan":     "Baseline presensi 1",
+			"status":         "1",
+		},
+		{
+			"idNotifikasi":   "baseline-2",
+			"kodeNotifikasi": "TUGAS-KULIAH",
+			"keterangan":     "Baseline tugas 2",
+			"status":         "1",
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		mu.Lock()
+		defer mu.Unlock()
+
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			_ = json.NewEncoder(w).Encode(map[string]int{"jumlah": len(serverItems)})
+		case "/api/notifikasi/mahasiswa":
+			_ = json.NewEncoder(w).Encode(serverItems)
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			readMarked = append(readMarked, body["idNotifikasi"])
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+
+	// 1. Establish baseline
+	if err := am.InitNotificationBaseline(ctx); err != nil {
+		t.Fatalf("InitNotificationBaseline failed: %v", err)
+	}
+
+	mu.Lock()
+	if len(readMarked) != 0 {
+		t.Errorf("expected no items marked read during baseline, got %v", readMarked)
+	}
+	mu.Unlock()
+
+	// 2. Poll immediately: baseline items should not trigger callbacks
+	var triggered []string
+	err = am.PollNotifications(ctx, func(ket string) {
+		triggered = append(triggered, ket)
+	}, func(ket string) {
+		triggered = append(triggered, ket)
+	}, nil)
+	if err != nil {
+		t.Fatalf("PollNotifications failed: %v", err)
+	}
+	if len(triggered) != 0 {
+		t.Errorf("expected 0 callbacks for baseline items, got %v", triggered)
+	}
+
+	// 3. Introduce a new notification
+	mu.Lock()
+	serverItems = append(serverItems, map[string]any{
+		"idNotifikasi":   "new-item-3",
+		"kodeNotifikasi": "PRESENSI-KULIAH",
+		"keterangan":     "New presensi 3",
+		"status":         "1",
+	})
+	mu.Unlock()
+
+	err = am.PollNotifications(ctx, func(ket string) {
+		triggered = append(triggered, ket)
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("PollNotifications failed on new item: %v", err)
+	}
+	if len(triggered) != 1 || triggered[0] != "New presensi 3" {
+		t.Errorf("expected only new notification to trigger, got %v", triggered)
+	}
+
+	mu.Lock()
+	if len(readMarked) != 1 || readMarked[0] != "new-item-3" {
+		t.Errorf("expected new notification marked read, got %v", readMarked)
+	}
+	mu.Unlock()
+}
+
+func TestAcademicManager_StartNotificationPoller_Baseline(t *testing.T) {
+	var mu sync.Mutex
+	serverItems := []map[string]any{
+		{
+			"idNotifikasi":   "old-item-1",
+			"kodeNotifikasi": "PRESENSI-KULIAH",
+			"keterangan":     "Old presensi 1",
+			"status":         "1",
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		mu.Lock()
+		defer mu.Unlock()
+
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			_ = json.NewEncoder(w).Encode(map[string]int{"jumlah": len(serverItems)})
+		case "/api/notifikasi/mahasiswa":
+			_ = json.NewEncoder(w).Encode(serverItems)
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	pollerCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	received := make(chan string, 10)
+	go am.StartNotificationPoller(pollerCtx, 20*time.Millisecond, nil, func(ket string) {
+		received <- ket
+	}, nil, nil)
+
+	// Baseline cycle executes; old item should NOT be sent to channel
+	select {
+	case ket := <-received:
+		t.Fatalf("unexpected notification from baseline item: %s", ket)
+	case <-time.After(60 * time.Millisecond):
+	}
+
+	// Now add a new item
+	mu.Lock()
+	serverItems = append(serverItems, map[string]any{
+		"idNotifikasi":   "post-startup-2",
+		"kodeNotifikasi": "PRESENSI-KULIAH",
+		"keterangan":     "Post startup 2",
+		"status":         "1",
+	})
+	mu.Unlock()
+
+	// New item should arrive
+	select {
+	case ket := <-received:
+		if ket != "Post startup 2" {
+			t.Errorf("expected 'Post startup 2', got %q", ket)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for post-startup notification")
 	}
 }
 
