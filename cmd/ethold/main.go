@@ -219,6 +219,14 @@ func run() error {
 		return nil
 	}
 
+	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
+		go func() {
+			if err := scanner.NotifyStartup(ctx, getVersion()); err != nil {
+				slog.Warn("Failed to send Telegram startup notification", "error", err)
+			}
+		}()
+	}
+
 	if !cfg.AutoPresence {
 		slog.Info("Academic daemon running (auto-presence disabled)")
 		<-ctx.Done()

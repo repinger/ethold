@@ -1078,3 +1078,55 @@ func TestSoakMemory(t *testing.T) {
 	t.Logf("TotalAlloc:  delta=%d B (%.2f MB)",
 		mEnd.TotalAlloc-mStart.TotalAlloc, float64(mEnd.TotalAlloc-mStart.TotalAlloc)/(1024*1024))
 }
+
+func TestScanner_NotifyStartup(t *testing.T) {
+	var sentPayload tgSendMessagePayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bottoken/sendMessage" {
+			_ = json.NewDecoder(r.Body).Decode(&sentPayload)
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "budi", "pass")
+	courses := NewCourseManager(client, server.URL, 5*time.Minute)
+	academic := NewAcademicManager(client, server.URL, 5*time.Minute)
+	presence := NewPresenceEngine(client, server.URL)
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+	state, err := NewStateManager(stateFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewScanner(auth, courses, presence, academic, state, notifier, 4)
+
+	err = scanner.NotifyStartup(context.Background(), "v1.0.0")
+	if err != nil {
+		t.Fatalf("NotifyStartup failed: %v", err)
+	}
+
+	if !strings.Contains(sentPayload.Text, "ETHOLD BOT AKTIF") {
+		t.Errorf("expected header, got: %s", sentPayload.Text)
+	}
+	if !strings.Contains(sentPayload.Text, "v1.0.0") {
+		t.Errorf("expected version, got: %s", sentPayload.Text)
+	}
+	if !strings.Contains(sentPayload.Text, "Auto-Presence (4 workers)") {
+		t.Errorf("expected auto-presence info, got: %s", sentPayload.Text)
+	}
+
+	nilScanner := NewScanner(auth, courses, presence, academic, state, nil, 4)
+	if err := nilScanner.NotifyStartup(context.Background(), "v1.0.0"); err != nil {
+		t.Errorf("expected nil error for nil notifier, got: %v", err)
+	}
+}
+

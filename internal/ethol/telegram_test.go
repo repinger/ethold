@@ -537,6 +537,82 @@ func TestTelegramNotifier_NotifyAuthFailure(t *testing.T) {
 	}
 }
 
+func TestTelegramNotifier_NotifyStartup(t *testing.T) {
+	var sentPayload tgSendMessagePayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bot123/sendMessage" {
+			_ = json.NewDecoder(r.Body).Decode(&sentPayload)
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "777")
+
+	t.Run("auto-presence enabled", func(t *testing.T) {
+		err = tn.NotifyStartup(context.Background(), StartupInfo{
+			Version:      "v1.2.3",
+			User:         &UserInfo{Nama: "Budi Santoso", NipNrp: "3120600001"},
+			AutoPresence: true,
+			WorkerCount:  4,
+			TotalRecords: 10,
+			TodayRecords: 2,
+			ScanInterval: 30 * time.Second,
+			InScanWindow: true,
+		})
+		if err != nil {
+			t.Fatalf("NotifyStartup failed: %v", err)
+		}
+
+		if !strings.Contains(sentPayload.Text, "ETHOLD BOT AKTIF") {
+			t.Errorf("expected title in payload, got: %s", sentPayload.Text)
+		}
+		if !strings.Contains(sentPayload.Text, "Budi Santoso") || !strings.Contains(sentPayload.Text, "3120600001") {
+			t.Errorf("expected user info in payload, got: %s", sentPayload.Text)
+		}
+		if !strings.Contains(sentPayload.Text, "v1.2.3") {
+			t.Errorf("expected version in payload, got: %s", sentPayload.Text)
+		}
+		if !strings.Contains(sentPayload.Text, "Auto-Presence (4 workers)") {
+			t.Errorf("expected mode in payload, got: %s", sentPayload.Text)
+		}
+		if !strings.Contains(sentPayload.Text, "30s (Active Session)") {
+			t.Errorf("expected scan interval and mode, got: %s", sentPayload.Text)
+		}
+		if !strings.Contains(sentPayload.Text, "10 entri (2 hari ini)") {
+			t.Errorf("expected records count, got: %s", sentPayload.Text)
+		}
+	})
+
+	t.Run("academic-only mode", func(t *testing.T) {
+		err = tn.NotifyStartup(context.Background(), StartupInfo{
+			Version:      "",
+			User:         nil,
+			AutoPresence: false,
+		})
+		if err != nil {
+			t.Fatalf("NotifyStartup failed: %v", err)
+		}
+
+		if !strings.Contains(sentPayload.Text, "Akademik Saja") {
+			t.Errorf("expected academic mode in payload, got: %s", sentPayload.Text)
+		}
+		if !strings.Contains(sentPayload.Text, "Tidak diketahui") {
+			t.Errorf("expected unknown user, got: %s", sentPayload.Text)
+		}
+		if !strings.Contains(sentPayload.Text, "dev") {
+			t.Errorf("expected default dev version, got: %s", sentPayload.Text)
+		}
+	})
+}
+
 func TestTelegramNotifier_SendMessageIDs(t *testing.T) {
 	var currentMsgID int64 = 100
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

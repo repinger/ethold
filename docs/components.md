@@ -168,6 +168,7 @@ This file orchestrates scanning operations, concurrency, and daemon lifecycle.
 - `(s *Scanner) ScanCourses(ctx context.Context, courses []Course) (int, error)`: Scans a specific subset of courses.
 - `(s *Scanner) TryScanCourses(ctx context.Context, courses []Course) (int, bool, error)`: Non-blocking variant of `ScanCourses`.
 - `(s *Scanner) Status() ScannerStatus`: Returns a snapshot of current operational metrics.
+- `(s *Scanner) NotifyStartup(ctx context.Context, version string) error`: Sends daemon startup notification with runtime parameters to Telegram.
 
 ---
 
@@ -294,6 +295,7 @@ This file interfaces with the Telegram Bot API.
 - `(tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) error`: Sends server outage notification.
 - `(tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error`: Sends server recovery notification.
 - `(tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) error`: Sends authentication failure alert.
+- `(tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo) error`: Sends daemon boot status and operational metadata alert.
 - `(tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler func(ctx context.Context, cmd string) string) (int64, error)`: Fetches single update batch from Telegram API.
 - `(tn *TelegramNotifier) StartCommandPoller(ctx, handler)`: Runs an update polling loop.
 

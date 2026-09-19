@@ -162,6 +162,23 @@ func (s *Scanner) Status() ScannerStatus {
 	}
 }
 
+func (s *Scanner) NotifyStartup(ctx context.Context, version string) error {
+	if s.notifier == nil {
+		return nil
+	}
+	status := s.Status()
+	return s.notifier.NotifyStartup(ctx, StartupInfo{
+		Version:      version,
+		User:         status.User,
+		AutoPresence: s.presence != nil,
+		WorkerCount:  status.WorkerCount,
+		TotalRecords: status.TotalAttended,
+		TodayRecords: status.TodayAttended,
+		ScanInterval: status.ScanPlan.Interval,
+		InScanWindow: status.ScanPlan.InWindow,
+	})
+}
+
 func (s *Scanner) PresenceDelay() (time.Duration, time.Duration) {
 	s.delayMu.RLock()
 	defer s.delayMu.RUnlock()

@@ -510,6 +510,62 @@ func (tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) er
 	return nil
 }
 
+type StartupInfo struct {
+	Version      string
+	User         *UserInfo
+	AutoPresence bool
+	WorkerCount  int
+	TotalRecords int
+	TodayRecords int
+	ScanInterval time.Duration
+	InScanWindow bool
+}
+
+func (tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo) error {
+	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+
+	userStr := "Tidak diketahui"
+	if info.User != nil {
+		userStr = fmt.Sprintf("%s (%s)", html.EscapeString(info.User.Nama), html.EscapeString(info.User.NipNrp))
+	}
+
+	verStr := info.Version
+	if verStr == "" {
+		verStr = "dev"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("🚀 <b>ETHOLD BOT AKTIF</b>\n\n")
+	sb.WriteString(fmt.Sprintf("👤 <b>Pengguna:</b> %s\n", userStr))
+	sb.WriteString(fmt.Sprintf("🏷️ <b>Versi:</b> <code>%s</code>\n", html.EscapeString(verStr)))
+	sb.WriteString(fmt.Sprintf("🕒 <b>Waktu Mulai:</b> %s\n", waktuStr))
+
+	if info.AutoPresence {
+		sb.WriteString(fmt.Sprintf("⚙️ <b>Mode:</b> Auto-Presence (%d workers)\n", info.WorkerCount))
+		if info.ScanInterval > 0 {
+			scanMode := "Background Sweep"
+			if info.InScanWindow {
+				scanMode = "Active Session"
+			}
+			sb.WriteString(fmt.Sprintf("⚡ <b>Interval Scan:</b> %v (%s)\n", info.ScanInterval, scanMode))
+		}
+		sb.WriteString(fmt.Sprintf("💾 <b>Presensi Tersimpan:</b> %d entri (%d hari ini)\n", info.TotalRecords, info.TodayRecords))
+	} else {
+		sb.WriteString("⚙️ <b>Mode:</b> Akademik Saja (Presensi Manual)\n")
+	}
+
+	sb.WriteString("\n<i>Bot siap menerima perintah dan memantau aktivitas ETHOL.</i>")
+
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if sendErr := tn.SendMessage(c, sb.String()); sendErr != nil {
+		slog.Error("Failed to send Telegram startup notification", "error", sendErr)
+		return sendErr
+	}
+	return nil
+}
+
 type tgDeleteMessagesPayload struct {
 	ChatID     string  `json:"chat_id"`
 	MessageIDs []int64 `json:"message_ids"`
