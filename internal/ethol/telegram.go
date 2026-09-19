@@ -923,6 +923,17 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 			continue
 		}
 
+		if tn.notifThreadID != 0 && rawThreadID == tn.notifThreadID {
+			slog.Debug("Ignoring Telegram command in notification topic", "cmd", cmd, "thread_id", rawThreadID)
+			devLog("Telegram command in notification topic", "cmd", cmd, "thread_id", rawThreadID)
+			if callbackID != "" {
+				ackCtx, ackCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				_ = tn.answerCallbackQuery(ackCtx, callbackID, "⚠️ Perintah tidak dapat digunakan di topik notifikasi.")
+				ackCancel()
+			}
+			continue
+		}
+
 		if tn.commandThreadID != 0 && rawThreadID != tn.commandThreadID {
 			slog.Debug("Ignoring Telegram command outside command topic", "cmd", cmd, "thread_id", rawThreadID, "expected", tn.commandThreadID)
 			devLog("Telegram command outside command topic", "cmd", cmd, "thread_id", rawThreadID, "expected", tn.commandThreadID)

@@ -108,7 +108,7 @@ go test -v ./...
 
 ## Telegram Bot Commands
 
-When `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` are configured, the daemon listens for commands from your chat ID. In forum supergroups with `TELEGRAM_COMMAND_THREAD_ID` set, commands are only accepted within that topic thread.
+When `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` are configured, the daemon listens for commands from your chat ID. In forum supergroups with `TELEGRAM_COMMAND_THREAD_ID` set, commands are only accepted within that topic thread. When `TELEGRAM_NOTIF_THREAD_ID` is set, commands sent within the notification topic are rejected.
 
 | Command           | Mode Requirement | Description                                                                      |
 | ----------------- | ---------------- | -------------------------------------------------------------------------------- |

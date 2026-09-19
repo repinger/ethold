@@ -1495,9 +1495,9 @@ func TestTelegramNotifier_ThreadRouting(t *testing.T) {
 
 func TestTelegramNotifier_PollOnce_TopicFilter(t *testing.T) {
 	var (
-		pollCount int
-		sentReply tgSendMessagePayload
-		answeredCB tgAnswerCallbackPayload
+		pollCount   int
+		sentReply   tgSendMessagePayload
+		answeredCBs []tgAnswerCallbackPayload
 	)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1505,10 +1505,11 @@ func TestTelegramNotifier_PollOnce_TopicFilter(t *testing.T) {
 		case "/bot123/getUpdates":
 			pollCount++
 			if pollCount == 1 {
-				// Return 3 updates:
 				// 1: Message in wrong topic (thread 999)
 				// 2: Message in correct topic (thread 100)
 				// 3: Callback in wrong topic (thread 999)
+				// 4: Message in notif topic (thread 200)
+				// 5: Callback in notif topic (thread 200)
 				resp := tgUpdatesResponse{
 					Ok: true,
 					Result: []tgUpdate{
@@ -1543,6 +1544,28 @@ func TestTelegramNotifier_PollOnce_TopicFilter(t *testing.T) {
 								Data: "/status",
 							},
 						},
+						{
+							UpdateID: 4,
+							Message: &tgMessage{
+								MessageID:       13,
+								Chat:            tgChat{ID: 888},
+								Text:            "/status",
+								MessageThreadID: 200,
+							},
+						},
+						{
+							UpdateID: 5,
+							CallbackQuery: &tgCallbackQuery{
+								ID:   "cb-2",
+								From: tgUser{ID: 888},
+								Message: &tgMessage{
+									MessageID:       14,
+									Chat:            tgChat{ID: 888},
+									MessageThreadID: 200,
+								},
+								Data: "/status",
+							},
+						},
 					},
 				}
 				_ = json.NewEncoder(w).Encode(resp)
@@ -1553,7 +1576,9 @@ func TestTelegramNotifier_PollOnce_TopicFilter(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&sentReply)
 			w.Write([]byte(`{"ok":true,"result":{"message_id":50}}`))
 		case "/bot123/answerCallbackQuery":
-			_ = json.NewDecoder(r.Body).Decode(&answeredCB)
+			var cb tgAnswerCallbackPayload
+			_ = json.NewDecoder(r.Body).Decode(&cb)
+			answeredCBs = append(answeredCBs, cb)
 			w.Write([]byte(`{"ok":true,"result":true}`))
 		case "/bot123/deleteMessages":
 			w.Write([]byte(`{"ok":true,"result":true}`))
@@ -1583,8 +1608,8 @@ func TestTelegramNotifier_PollOnce_TopicFilter(t *testing.T) {
 	}
 	waitPendingDeletions(tn)
 
-	if nextOffset != 4 {
-		t.Errorf("expected nextOffset 4, got %d", nextOffset)
+	if nextOffset != 6 {
+		t.Errorf("expected nextOffset 6, got %d", nextOffset)
 	}
 	if len(handledCmds) != 1 || handledCmds[0] != "/help" {
 		t.Errorf("expected only 1 command handled (/help), got %v", handledCmds)
@@ -1592,8 +1617,114 @@ func TestTelegramNotifier_PollOnce_TopicFilter(t *testing.T) {
 	if sentReply.MessageThreadID != 100 {
 		t.Errorf("expected reply in thread 100, got %d", sentReply.MessageThreadID)
 	}
-	if answeredCB.CallbackQueryID != "cb-1" || !strings.Contains(answeredCB.Text, "topik") {
-		t.Errorf("expected callback query answered with warning, got %+v", answeredCB)
+	if len(answeredCBs) != 2 {
+		t.Fatalf("expected 2 callback queries answered, got %d", len(answeredCBs))
+	}
+	if answeredCBs[0].CallbackQueryID != "cb-1" || !strings.Contains(answeredCBs[0].Text, "topik perintah") {
+		t.Errorf("expected cb-1 warning about topic perintah, got %+v", answeredCBs[0])
+	}
+	if answeredCBs[1].CallbackQueryID != "cb-2" || !strings.Contains(answeredCBs[1].Text, "topik notifikasi") {
+		t.Errorf("expected cb-2 warning about topic notifikasi, got %+v", answeredCBs[1])
+	}
+}
+
+func TestTelegramNotifier_PollOnce_NotificationTopicRejected_ZeroCommandThreadID(t *testing.T) {
+	var (
+		pollCount  int
+		sentReply  tgSendMessagePayload
+		answeredCB tgAnswerCallbackPayload
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			pollCount++
+			if pollCount == 1 {
+				resp := tgUpdatesResponse{
+					Ok: true,
+					Result: []tgUpdate{
+						{
+							UpdateID: 1,
+							Message: &tgMessage{
+								MessageID:       10,
+								Chat:            tgChat{ID: 888},
+								Text:            "/ping",
+								MessageThreadID: 0,
+							},
+						},
+						{
+							UpdateID: 2,
+							Message: &tgMessage{
+								MessageID:       11,
+								Chat:            tgChat{ID: 888},
+								Text:            "/status",
+								MessageThreadID: 200,
+							},
+						},
+						{
+							UpdateID: 3,
+							CallbackQuery: &tgCallbackQuery{
+								ID:   "cb-notif",
+								From: tgUser{ID: 888},
+								Message: &tgMessage{
+									MessageID:       12,
+									Chat:            tgChat{ID: 888},
+									MessageThreadID: 200,
+								},
+								Data: "/status",
+							},
+						},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(tgUpdatesResponse{Ok: true, Result: nil})
+		case "/bot123/sendMessage":
+			_ = json.NewDecoder(r.Body).Decode(&sentReply)
+			w.Write([]byte(`{"ok":true,"result":{"message_id":50}}`))
+		case "/bot123/answerCallbackQuery":
+			_ = json.NewDecoder(r.Body).Decode(&answeredCB)
+			w.Write([]byte(`{"ok":true,"result":true}`))
+		case "/bot123/deleteMessages":
+			w.Write([]byte(`{"ok":true,"result":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "888")
+	tn.SetThreadIDs(0, 200)
+
+	var handledCmds []string
+	handler := func(ctx context.Context, cmd string) string {
+		handledCmds = append(handledCmds, cmd)
+		return "Handled: " + cmd
+	}
+
+	nextOffset, err := tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+	waitPendingDeletions(tn)
+
+	if nextOffset != 4 {
+		t.Errorf("expected nextOffset 4, got %d", nextOffset)
+	}
+	if len(handledCmds) != 1 || handledCmds[0] != "/ping" {
+		t.Errorf("expected only /ping handled, got %v", handledCmds)
+	}
+	if sentReply.MessageThreadID != 0 {
+		t.Errorf("expected reply in general thread 0, got %d", sentReply.MessageThreadID)
+	}
+	if answeredCB.CallbackQueryID != "cb-notif" || !strings.Contains(answeredCB.Text, "topik notifikasi") {
+		t.Errorf("expected cb-notif warning about topic notifikasi, got %+v", answeredCB)
 	}
 }
 
