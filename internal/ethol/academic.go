@@ -38,6 +38,11 @@ type examCacheEntry struct {
 	timestamp time.Time
 }
 
+type announcementCacheEntry struct {
+	items     []AnnouncementItem
+	timestamp time.Time
+}
+
 type AcademicManager struct {
 	mu                  sync.RWMutex
 	client              *http.Client
@@ -49,7 +54,8 @@ type AcademicManager struct {
 	videoCache          map[int]videoCacheEntry         // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	attendanceCache     map[string]attendanceCacheEntry // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	examCache           map[string]examCacheEntry       // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
-	processedNotifIDs   map[int]struct{}                // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
+	announcementCache   announcementCacheEntry
+	processedNotifIDs   map[int]struct{} // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
 	processedNotifQueue []int
 }
 
@@ -86,26 +92,32 @@ func (am *AcademicManager) InvalidateAttendanceCache() {
 }
 
 type AcademicCacheStats struct {
-	SchedulesCount  int
-	TasksCount      int
-	MaterialsCount  int
-	VideosCount     int
-	AttendanceCount int
-	ExamsCount      int
-	ProcessedNotifs int
+	SchedulesCount     int
+	TasksCount         int
+	MaterialsCount     int
+	VideosCount        int
+	AttendanceCount    int
+	ExamsCount         int
+	AnnouncementsCount int
+	ProcessedNotifs    int
 }
 
 func (am *AcademicManager) CacheStats() AcademicCacheStats {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
+	annCount := 0
+	if !am.announcementCache.timestamp.IsZero() && time.Since(am.announcementCache.timestamp) < am.ttl {
+		annCount = len(am.announcementCache.items)
+	}
 	return AcademicCacheStats{
-		SchedulesCount:  len(am.scheduleCache),
-		TasksCount:      len(am.taskCache),
-		MaterialsCount:  len(am.materialCache),
-		VideosCount:     len(am.videoCache),
-		AttendanceCount: len(am.attendanceCache),
-		ExamsCount:      len(am.examCache),
-		ProcessedNotifs: len(am.processedNotifIDs),
+		SchedulesCount:     len(am.scheduleCache),
+		TasksCount:         len(am.taskCache),
+		MaterialsCount:     len(am.materialCache),
+		VideosCount:        len(am.videoCache),
+		AttendanceCount:    len(am.attendanceCache),
+		ExamsCount:         len(am.examCache),
+		AnnouncementsCount: annCount,
+		ProcessedNotifs:    len(am.processedNotifIDs),
 	}
 }
 
