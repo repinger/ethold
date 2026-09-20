@@ -148,8 +148,9 @@ func splitMessage(text string, maxLen int) []string {
 		return []string{text}
 	}
 
-	var chunks []string
+	chunks := make([]string, 0, len(text)/maxLen+1)
 	var current strings.Builder
+	current.Grow(maxLen)
 
 	rem := text
 	for len(rem) > 0 {
@@ -170,12 +171,14 @@ func splitMessage(text string, maxLen int) []string {
 		if current.Len() > 0 && current.Len()+needed > maxLen {
 			chunks = append(chunks, current.String())
 			current.Reset()
+			current.Grow(maxLen)
 		}
 
 		for len(line) > maxLen {
 			if current.Len() > 0 {
 				chunks = append(chunks, current.String())
 				current.Reset()
+				current.Grow(maxLen)
 			}
 			chunks = append(chunks, line[:maxLen])
 			line = line[maxLen:]
