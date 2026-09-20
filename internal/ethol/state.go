@@ -175,7 +175,6 @@ func (sm *StateManager) saveLocked() error {
 
 	bw := bufio.NewWriter(tmpFile)
 	enc := json.NewEncoder(bw)
-	enc.SetIndent("", "  ")
 	if err := enc.Encode(sf); err != nil {
 		_ = tmpFile.Close()
 		_ = os.Remove(tmpName)
