@@ -36,9 +36,7 @@ type StateManager struct {
 
 func NewStateManager(path string) (*StateManager, error) {
 	sm := &StateManager{
-		path:    path,
-		records: make(map[string]PresenceRecord),
-		recs:    make(map[string]PresenceRecord),
+		path: path,
 	}
 
 	dir := filepath.Dir(path)
@@ -59,12 +57,14 @@ func NewStateManager(path string) (*StateManager, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			sm.records = make(map[string]PresenceRecord)
 			return sm, nil
 		}
 		return nil, fmt.Errorf("read state file: %w", err)
 	}
 
 	if len(bytes.TrimSpace(data)) == 0 {
+		sm.records = make(map[string]PresenceRecord)
 		return sm, nil
 	}
 
@@ -73,11 +73,19 @@ func NewStateManager(path string) (*StateManager, error) {
 		return nil, fmt.Errorf("parse state file: %w", err)
 	}
 
-	for _, k := range sf.AttendedKeys {
-		sm.records[k] = PresenceRecord{Key: k}
+	capacity := len(sf.AttendedKeys)
+	if len(sf.Records) > capacity {
+		capacity = len(sf.Records)
 	}
+	sm.records = make(map[string]PresenceRecord, capacity)
+
 	for k, rec := range sf.Records {
 		sm.records[k] = rec
+	}
+	for _, k := range sf.AttendedKeys {
+		if _, ok := sm.records[k]; !ok {
+			sm.records[k] = PresenceRecord{Key: k}
+		}
 	}
 
 	return sm, nil
