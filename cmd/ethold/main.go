@@ -184,16 +184,7 @@ func run() error {
 			})
 		}
 		go notifier.StartCommandPoller(ctx, scanner.HandleTelegramCommand)
-		go academic.StartNotificationPoller(ctx, 30*time.Second, auth.EnsureSession, func(ket string) {
-			if cfg.AutoPresence {
-				_ = notifier.SendMessage(ctx, fmt.Sprintf("🔔 <b>NOTIFIKASI ETHOL:</b>\n%s\n\n<i>Memicu auto-presensi seketika...</i>", html.EscapeString(ket)))
-				go func() {
-					_, _, _ = scanner.TryScanOnce(ctx)
-				}()
-			} else {
-				_ = notifier.SendMessage(ctx, fmt.Sprintf("🔔 <b>NOTIFIKASI ETHOL:</b>\n%s", html.EscapeString(ket)))
-			}
-		}, func(ket string) {
+		go academic.StartNotificationPoller(ctx, 30*time.Second, auth.EnsureSession, nil, func(ket string) {
 			_ = notifier.SendMessage(ctx, fmt.Sprintf("📝 <b>NOTIFIKASI TUGAS BARU:</b>\n%s", html.EscapeString(ket)))
 		}, func(kode, ket string) {
 			title := "NOTIFIKASI ETHOL"
