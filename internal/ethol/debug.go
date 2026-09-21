@@ -18,29 +18,20 @@ func (s *Scanner) handleDebug(ctx context.Context) string {
 	heapInuseMB := float64(m.HeapInuse) / (1024 * 1024)
 
 	status := s.Status()
-	stateStr := "Aktif"
-	if s.presence == nil {
-		stateStr = "Tidak Aktif"
-	} else if status.Paused {
-		stateStr = "Dijeda ⏸️"
-	}
+	stateStr := s.formatDaemonState(status.Paused)
+	modeStr := s.formatScanMode(status.ScanPlan.InWindow)
 	uptime := time.Since(status.StartTime).Truncate(time.Second)
 
-	modeStr := "Background Sweep"
-	if s.presence == nil {
-		modeStr = "Disabled"
-	} else if status.ScanPlan.InWindow {
-		modeStr = "Active Session"
-	}
-
 	lastScanStr := "Belum pernah"
-	if !status.LastScanTime.IsZero() {
+	if s.presence == nil {
+		lastScanStr = "Tidak aktif"
+	} else if !status.LastScanTime.IsZero() {
 		durStr := status.LastScanDuration.Round(time.Millisecond).String()
-		resStr := fmt.Sprintf("✅ %d sesi baru", status.LastAttended)
-		if status.LastScanErr != nil {
-			resStr = fmt.Sprintf("❌ %s", html.EscapeString(status.LastScanErr.Error()))
-		}
-		lastScanStr = fmt.Sprintf("%s (%s) - %s", status.LastScanTime.In(WIBLocation).Format("15:04:05 WIB"), durStr, resStr)
+		lastScanStr = fmt.Sprintf("%s (%s) - %s",
+			status.LastScanTime.In(WIBLocation).Format("15:04:05 WIB"),
+			durStr,
+			formatScanOutcome(status.LastScanErr, status.LastAttended),
+		)
 	}
 
 	statePath := "Tidak tersedia"

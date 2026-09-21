@@ -57,20 +57,14 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 
 	case "/status":
 		status := s.Status()
-
-		stateStr := "Aktif"
-		if s.presence == nil {
-			stateStr = "Tidak Aktif"
-		} else if status.Paused {
-			stateStr = "Dijeda ⏸️"
-		}
+		stateStr := s.formatDaemonState(status.Paused)
+		modeStr := s.formatScanMode(status.ScanPlan.InWindow)
+		uptime := time.Since(status.StartTime).Truncate(time.Second)
 
 		userStr := "Belum login"
 		if status.User != nil {
 			userStr = fmt.Sprintf("%s (%s)", html.EscapeString(status.User.Nama), html.EscapeString(status.User.NipNrp))
 		}
-
-		uptime := time.Since(status.StartTime).Truncate(time.Second)
 
 		lastScanStr := "Belum ada"
 		resultStr := "-"
@@ -80,21 +74,12 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		} else if !status.LastScanTime.IsZero() {
 			durStr := status.LastScanDuration.Round(time.Millisecond).String()
 			lastScanStr = fmt.Sprintf("%s (%s)", status.LastScanTime.In(WIBLocation).Format("15:04:05 WIB"), durStr)
-			if status.LastScanErr != nil {
-				resultStr = fmt.Sprintf("❌ Gagal (%s)", html.EscapeString(status.LastScanErr.Error()))
-			} else {
-				resultStr = fmt.Sprintf("✅ Berhasil (%d sesi baru)", status.LastAttended)
-			}
+			resultStr = formatScanOutcome(status.LastScanErr, status.LastAttended)
 		}
 
 		activeCourseStr := "Tidak ada"
 		if status.ActiveCourse != "" {
 			activeCourseStr = html.EscapeString(status.ActiveCourse)
-		}
-
-		modeStr := "Background Sweep"
-		if status.ScanPlan.InWindow {
-			modeStr = "Active Session"
 		}
 
 		return fmt.Sprintf(
@@ -458,3 +443,31 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return "❓ Perintah tidak dikenal. Ketik /help untuk daftar perintah."
 	}
 }
+
+func (s *Scanner) formatDaemonState(paused bool) string {
+	if s.presence == nil {
+		return "Tidak Aktif"
+	}
+	if paused {
+		return "Dijeda ⏸️"
+	}
+	return "Aktif"
+}
+
+func (s *Scanner) formatScanMode(inWindow bool) string {
+	if s.presence == nil {
+		return "Disabled"
+	}
+	if inWindow {
+		return "Active Session"
+	}
+	return "Background Sweep"
+}
+
+func formatScanOutcome(err error, attended int) string {
+	if err != nil {
+		return fmt.Sprintf("❌ Gagal (%s)", html.EscapeString(err.Error()))
+	}
+	return fmt.Sprintf("✅ Berhasil (%d sesi baru)", attended)
+}
+
