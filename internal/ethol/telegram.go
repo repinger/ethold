@@ -834,7 +834,7 @@ func (tn *TelegramNotifier) answerCallbackQuery(ctx context.Context, queryID, te
 		return tn.sanitizeError(err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	return nil
 }
 

@@ -112,7 +112,7 @@ func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 		return nil, fmt.Errorf("post cas credentials: %w", err)
 	}
 	defer postResp.Body.Close()
-	_, _ = io.Copy(io.Discard, postResp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(postResp.Body, 4096))
 
 	if postResp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("cas submit failed: HTTP %d (%s)", postResp.StatusCode, http.StatusText(postResp.StatusCode))
@@ -214,7 +214,7 @@ func (a *AuthManager) EnsureSession(ctx context.Context) error {
 		return fmt.Errorf("refresh session: %w", err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 
 	if resp.StatusCode == http.StatusOK {
 		devLog("Session refresh success", "status", resp.StatusCode)
