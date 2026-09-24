@@ -291,6 +291,7 @@ This file interfaces with the Telegram Bot API.
 - `(tn *TelegramNotifier) SendChatAction(ctx context.Context, action string, threadID int64) error`: Broadcasts a chat action status (e.g. typing) to Telegram.
 - `(tn *TelegramNotifier) SetInlineKeyboard(buttons [][]InlineButton)`: Configures an interactive inline keyboard (`InlineKeyboardMarkup`) attached to command replies, sending slash commands via `callback_query` without user message echoes.
 - `(tn *TelegramNotifier) DeleteMessages(ctx context.Context, messageIDs []int64) error`: Deletes messages in batches of up to 100 using Telegram's `deleteMessages` endpoint.
+- `(tn *TelegramNotifier) PinChatMessage(ctx context.Context, messageID int64) error`: Pins a message silently using Telegram's `pinChatMessage` endpoint. In direct chat mode, the active command response is pinned automatically to keep it accessible.
 - `(tn *TelegramNotifier) NotifyPresenceSuccess(ctx, course, lecturer, key, msg) error`: Sends formatted attendance alerts.
 - `(tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) error`: Sends server outage notification.
 - `(tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error`: Sends server recovery notification.

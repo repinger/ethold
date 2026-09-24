@@ -1789,6 +1789,299 @@ func TestTelegramNotifier_SendChatAction(t *testing.T) {
 	}
 }
 
+func TestTelegramNotifier_PinChatMessage(t *testing.T) {
+	var (
+		mu          sync.Mutex
+		lastPayload tgPinChatMessagePayload
+		returnErr   bool
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/bot123/pinChatMessage" {
+			http.NotFound(w, r)
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if returnErr {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"description":"Bad Request: message to pin not found"}`))
+			return
+		}
+		var payload tgPinChatMessagePayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		lastPayload = payload
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+
+	// 1. Success
+	err = tn.PinChatMessage(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("PinChatMessage failed: %v", err)
+	}
+	mu.Lock()
+	if lastPayload.ChatID != "999" || lastPayload.MessageID != 42 || !lastPayload.DisableNotification {
+		t.Errorf("unexpected payload: %+v", lastPayload)
+	}
+	mu.Unlock()
+
+	// 2. API error handling
+	mu.Lock()
+	returnErr = true
+	mu.Unlock()
+	err = tn.PinChatMessage(context.Background(), 99)
+	if err == nil || !strings.Contains(err.Error(), "message to pin not found") {
+		t.Errorf("expected error containing 'message to pin not found', got %v", err)
+	}
+
+	// 3. No-op on empty token, chatID, or messageID <= 0
+	emptyTN := NewTelegramNotifier(client, server.URL, "", "")
+	if err := emptyTN.PinChatMessage(context.Background(), 42); err != nil {
+		t.Errorf("expected nil for empty credentials, got %v", err)
+	}
+	if err := tn.PinChatMessage(context.Background(), 0); err != nil {
+		t.Errorf("expected nil for messageID 0, got %v", err)
+	}
+	if err := tn.PinChatMessage(context.Background(), -1); err != nil {
+		t.Errorf("expected nil for negative messageID, got %v", err)
+	}
+}
+
+func TestTelegramNotifier_DirectChatPinning(t *testing.T) {
+	var (
+		mu         sync.Mutex
+		pinnedMsgs []int64
+		failEdit   bool
+		currentBot int64 = 500
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			resp := map[string]any{
+				"ok": true,
+				"result": []map[string]any{
+					{
+						"update_id": 1,
+						"message": map[string]any{
+							"message_id": 10,
+							"chat":       map[string]any{"id": 999},
+							"text":       "/status",
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "/bot123/sendMessage":
+			currentBot++
+			resp := map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"message_id": currentBot,
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "/bot123/editMessageText":
+			if failEdit {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"ok":false,"description":"message cannot be edited"}`))
+				return
+			}
+			var payload tgEditMessagePayload
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			resp := map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"message_id": payload.MessageID,
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "/bot123/pinChatMessage":
+			var payload tgPinChatMessagePayload
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			pinnedMsgs = append(pinnedMsgs, payload.MessageID)
+			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+
+		case "/bot123/deleteMessages", "/bot123/sendChatAction":
+			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handler := func(ctx context.Context, cmd string) string {
+		return "status response"
+	}
+
+	// 1. Direct chat mode: first command sends new bot message -> pins it
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	_, err = tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce failed: %v", err)
+	}
+	waitPendingDeletions(tn)
+
+	mu.Lock()
+	if len(pinnedMsgs) != 1 || pinnedMsgs[0] != 501 {
+		t.Fatalf("expected pinned message [501], got %v", pinnedMsgs)
+	}
+	mu.Unlock()
+
+	// 2. Second command edits active message in-place -> does NOT re-pin
+	_, err = tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce second call failed: %v", err)
+	}
+	waitPendingDeletions(tn)
+
+	mu.Lock()
+	if len(pinnedMsgs) != 1 {
+		t.Fatalf("expected pinned message count still 1, got %v", pinnedMsgs)
+	}
+	mu.Unlock()
+
+	// 3. Third command fails edit and sends new message -> pins new message
+	mu.Lock()
+	failEdit = true
+	mu.Unlock()
+
+	_, err = tn.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce third call failed: %v", err)
+	}
+	waitPendingDeletions(tn)
+
+	mu.Lock()
+	if len(pinnedMsgs) != 2 || pinnedMsgs[1] != 502 {
+		t.Fatalf("expected pinned messages [501, 502], got %v", pinnedMsgs)
+	}
+	mu.Unlock()
+
+	// 4. Forum topics mode: should NOT pin
+	tnForum := NewTelegramNotifier(client, server.URL, "123", "999")
+	tnForum.SetThreadIDs(100, 200)
+
+	mu.Lock()
+	pinnedMsgs = nil
+	failEdit = false
+	mu.Unlock()
+
+	_, err = tnForum.PollOnce(context.Background(), 0, handler)
+	if err != nil {
+		t.Fatalf("PollOnce forum call failed: %v", err)
+	}
+	waitPendingDeletions(tnForum)
+
+	mu.Lock()
+	if len(pinnedMsgs) != 0 {
+		t.Fatalf("expected 0 pinned messages in forum mode, got %v", pinnedMsgs)
+	}
+	mu.Unlock()
+}
+
+func TestTelegramNotifier_DirectChatPinning_CircuitBreaker(t *testing.T) {
+	var (
+		mu           sync.Mutex
+		pinAttempts  int
+		currentBotID int64
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		switch r.URL.Path {
+		case "/bot123/getUpdates":
+			resp := map[string]any{
+				"ok": true,
+				"result": []map[string]any{
+					{
+						"update_id": 1,
+						"message": map[string]any{
+							"message_id": 10,
+							"chat":       map[string]any{"id": 999},
+							"text":       "/status",
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "/bot123/sendMessage":
+			currentBotID++
+			resp := map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"message_id": currentBotID,
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "/bot123/pinChatMessage":
+			pinAttempts++
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"description":"Bad Request: not enough rights to pin"}`))
+
+		case "/bot123/deleteMessages", "/bot123/sendChatAction":
+			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "123", "999")
+	tn.rateLimiter = nil // bypass rate limiter to test circuit breaker directly
+	handler := func(ctx context.Context, cmd string) string {
+		return "status response"
+	}
+
+	// Run commands past maxPinFailures (3)
+	for i := 0; i < 5; i++ {
+		_, err := tn.PollOnce(context.Background(), 0, handler)
+		if err != nil {
+			t.Fatalf("PollOnce call %d failed: %v", i+1, err)
+		}
+		waitPendingDeletions(tn)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if pinAttempts != maxPinFailures {
+		t.Fatalf("expected exactly %d pin attempts before circuit breaker tripped, got %d", maxPinFailures, pinAttempts)
+	}
+}
+
 func BenchmarkTelegram_SplitMessage(b *testing.B) {
 	var sb strings.Builder
 	for i := 0; i < 200; i++ {

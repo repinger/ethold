@@ -71,6 +71,8 @@ type TelegramNotifier struct {
 	lastUnauthLog   time.Time
 	activeMu        sync.Mutex
 	activeMsgID     int64
+	pinnedMsgID     int64
+	pinFailures     int
 	extraMsgIDs     []int64
 	deleteWg        sync.WaitGroup
 	markupMu        sync.RWMutex
@@ -102,6 +104,10 @@ func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *Te
 func (tn *TelegramNotifier) SetThreadIDs(commandThreadID, notifThreadID int64) {
 	tn.commandThreadID = commandThreadID
 	tn.notifThreadID = notifThreadID
+}
+
+func (tn *TelegramNotifier) isDirectChat() bool {
+	return tn.commandThreadID == 0 && tn.notifThreadID == 0
 }
 
 type InlineButton struct {
@@ -632,6 +638,61 @@ func (tn *TelegramNotifier) DeleteMessages(ctx context.Context, messageIDs []int
 	return nil
 }
 
+const maxPinFailures = 3
+
+type tgPinChatMessagePayload struct {
+	ChatID              string `json:"chat_id"`
+	MessageID           int64  `json:"message_id"`
+	DisableNotification bool   `json:"disable_notification"`
+}
+
+func (tn *TelegramNotifier) PinChatMessage(ctx context.Context, messageID int64) error {
+	if tn.token == "" || tn.chatID == "" || messageID <= 0 {
+		return nil
+	}
+
+	payload := tgPinChatMessagePayload{
+		ChatID:              tn.chatID,
+		MessageID:           messageID,
+		DisableNotification: true,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal pinChatMessage payload: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("%s/bot%s/pinChatMessage", tn.baseURL, tn.token)
+
+	client := tn.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return tn.sanitizeError(fmt.Errorf("create pinChatMessage req: %w", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return tn.sanitizeError(fmt.Errorf("send pinChatMessage request: %w", err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+
+	if resp.StatusCode != http.StatusOK {
+		errText := strings.TrimSpace(string(respBody))
+		if errText != "" {
+			return tn.sanitizeError(fmt.Errorf("telegram pinChatMessage api error: HTTP %d: %s", resp.StatusCode, errText))
+		}
+		return fmt.Errorf("telegram pinChatMessage api error: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
 type tgSendChatActionPayload struct {
 	ChatID          string `json:"chat_id"`
 	Action          string `json:"action"`
@@ -1105,6 +1166,42 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 						devLog("Failed to delete previous Telegram messages", "error", err)
 					}
 				}(toDelete)
+			}
+
+			if tn.isDirectChat() {
+				tn.activeMu.Lock()
+				curActive := tn.activeMsgID
+				needsPin := curActive > 0 && curActive != tn.pinnedMsgID && tn.pinFailures < maxPinFailures
+				if needsPin {
+					tn.pinnedMsgID = curActive
+				}
+				tn.activeMu.Unlock()
+
+				if needsPin {
+					tn.deleteWg.Add(1)
+					go func(mid int64) {
+						defer tn.deleteWg.Done()
+						pinCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+						defer cancel()
+						if err := tn.PinChatMessage(pinCtx, mid); err != nil {
+							slog.Warn("Failed to pin Telegram message", "msg_id", mid, "error", err)
+							devLog("Failed to pin Telegram message", "msg_id", mid, "error", err)
+							tn.activeMu.Lock()
+							if tn.pinnedMsgID == mid {
+								tn.pinnedMsgID = 0
+							}
+							tn.pinFailures++
+							if tn.pinFailures >= maxPinFailures {
+								slog.Warn("Disabling Telegram message pinning: consecutive failures reached threshold", "threshold", maxPinFailures)
+							}
+							tn.activeMu.Unlock()
+						} else {
+							tn.activeMu.Lock()
+							tn.pinFailures = 0
+							tn.activeMu.Unlock()
+						}
+					}(curActive)
+				}
 			}
 		}
 
