@@ -865,9 +865,6 @@ func TestTelegramNotifier_SingleMessageReplacementCycle(t *testing.T) {
 				mu.Unlock()
 				w.Write([]byte(`{"ok":true,"result":true}`))
 
-			case "/bot123/sendChatAction":
-				w.Write([]byte(`{"ok":true,"result":true}`))
-
 			default:
 				http.NotFound(w, r)
 			}
@@ -928,7 +925,6 @@ func TestTelegramNotifier_SingleMessageReplacementCycle(t *testing.T) {
 func TestTelegramNotifier_InstantUserPromptDeletion(t *testing.T) {
 	var mu sync.Mutex
 	var order []string
-	var chatActions []string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -943,14 +939,6 @@ func TestTelegramNotifier_InstantUserPromptDeletion(t *testing.T) {
 				"result": map[string]any{"message_id": 999},
 			}
 			_ = json.NewEncoder(w).Encode(resp)
-		case "/bot123/sendChatAction":
-			var payload tgSendChatActionPayload
-			_ = json.NewDecoder(r.Body).Decode(&payload)
-			mu.Lock()
-			chatActions = append(chatActions, payload.Action)
-			order = append(order, "action")
-			mu.Unlock()
-			w.Write([]byte(`{"ok":true,"result":true}`))
 		case "/bot123/deleteMessages":
 			mu.Lock()
 			order = append(order, "delete")
@@ -1003,14 +991,6 @@ func TestTelegramNotifier_InstantUserPromptDeletion(t *testing.T) {
 					"result": map[string]any{"message_id": 999},
 				}
 				_ = json.NewEncoder(w).Encode(resp)
-			case "/bot123/sendChatAction":
-				var payload tgSendChatActionPayload
-				_ = json.NewDecoder(r.Body).Decode(&payload)
-				mu.Lock()
-				chatActions = append(chatActions, payload.Action)
-				order = append(order, "action")
-				mu.Unlock()
-				w.Write([]byte(`{"ok":true,"result":true}`))
 			case "/bot123/deleteMessages":
 				mu.Lock()
 				order = append(order, "delete")
@@ -1032,14 +1012,11 @@ func TestTelegramNotifier_InstantUserPromptDeletion(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(order) < 2 {
-		t.Fatalf("expected at least [delete, send], got %v", order)
+	if len(order) != 2 {
+		t.Fatalf("expected [delete, send], got %v", order)
 	}
-	if order[0] != "delete" && order[1] != "delete" {
+	if order[0] != "delete" || order[1] != "send" {
 		t.Fatalf("expected delete before send, got order: %v", order)
-	}
-	if len(chatActions) == 0 || chatActions[0] != "typing" {
-		t.Fatalf("expected 'typing' chat action, got %v", chatActions)
 	}
 }
 
@@ -1728,67 +1705,6 @@ func TestTelegramNotifier_PollOnce_NotificationTopicRejected_ZeroCommandThreadID
 	}
 }
 
-func TestTelegramNotifier_SendChatAction(t *testing.T) {
-	var (
-		mu          sync.Mutex
-		lastPayload tgSendChatActionPayload
-	)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/bot123/sendChatAction" {
-			http.NotFound(w, r)
-			return
-		}
-		var payload tgSendChatActionPayload
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		mu.Lock()
-		lastPayload = payload
-		mu.Unlock()
-		w.Write([]byte(`{"ok":true,"result":true}`))
-	}))
-	defer server.Close()
-
-	client, err := NewHTTPClient()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tn := NewTelegramNotifier(client, server.URL, "123", "999")
-
-	// 1. Normal sendChatAction with thread
-	err = tn.SendChatAction(context.Background(), "typing", 555)
-	if err != nil {
-		t.Fatalf("SendChatAction failed: %v", err)
-	}
-
-	mu.Lock()
-	if lastPayload.ChatID != "999" || lastPayload.Action != "typing" || lastPayload.MessageThreadID != 555 {
-		t.Errorf("unexpected payload: %+v", lastPayload)
-	}
-	mu.Unlock()
-
-	// 2. Default action when empty string passed
-	err = tn.SendChatAction(context.Background(), "", 0)
-	if err != nil {
-		t.Fatalf("SendChatAction default action failed: %v", err)
-	}
-
-	mu.Lock()
-	if lastPayload.Action != "typing" || lastPayload.MessageThreadID != 0 {
-		t.Errorf("unexpected default action payload: %+v", lastPayload)
-	}
-	mu.Unlock()
-
-	// 3. No-op when token or chatID is empty
-	emptyTN := NewTelegramNotifier(client, server.URL, "", "")
-	if err := emptyTN.SendChatAction(context.Background(), "typing", 0); err != nil {
-		t.Errorf("expected nil error for empty credentials, got %v", err)
-	}
-}
-
 func TestTelegramNotifier_PinChatMessage(t *testing.T) {
 	var (
 		mu          sync.Mutex
@@ -1919,7 +1835,7 @@ func TestTelegramNotifier_DirectChatPinning(t *testing.T) {
 			pinnedMsgs = append(pinnedMsgs, payload.MessageID)
 			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 
-		case "/bot123/deleteMessages", "/bot123/sendChatAction":
+		case "/bot123/deleteMessages":
 			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 
 		default:
@@ -2046,7 +1962,7 @@ func TestTelegramNotifier_DirectChatPinning_CircuitBreaker(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"ok":false,"description":"Bad Request: not enough rights to pin"}`))
 
-		case "/bot123/deleteMessages", "/bot123/sendChatAction":
+		case "/bot123/deleteMessages":
 			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 
 		default:
