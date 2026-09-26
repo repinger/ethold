@@ -280,6 +280,7 @@ func (am *AcademicManager) StartNotificationPoller(
 		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("Notification poller cycle failed", "error", err)
 		}
+		am.SweepExpired()
 	}
 
 	poll()

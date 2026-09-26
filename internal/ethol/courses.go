@@ -198,6 +198,12 @@ func (cm *CourseManager) refreshLocked(ctx context.Context) ([]Course, error) {
 		if courses[i].Dosen == "" {
 			courses[i].Dosen = "Dosen Pengampu"
 		}
+		name := courses[i].CourseName()
+		courses[i].Matakuliah = name
+		courses[i].NamaMatakuliah = nil
+		if courses[i].NomorDosen != nil {
+			courses[i].NomorDosen = parseCount(courses[i].NomorDosen)
+		}
 	}
 
 	cm.mu.Lock()

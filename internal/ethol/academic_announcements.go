@@ -83,6 +83,17 @@ func (am *AcademicManager) GetAnnouncements(ctx context.Context) ([]Announcement
 		return b.ID - a.ID
 	})
 
+	for i := range items {
+		if items[i].Isi == "" && items[i].IsiPengumuman != "" {
+			items[i].Isi = items[i].IsiPengumuman
+		}
+		items[i].IsiPengumuman = ""
+		if items[i].WaktuIndonesia == "" && items[i].TanggalIndonesia != "" {
+			items[i].WaktuIndonesia = items[i].TanggalIndonesia
+		}
+		items[i].TanggalIndonesia = ""
+	}
+
 	am.mu.Lock()
 	now := time.Now()
 	am.sweepExpiredLocked(now)
