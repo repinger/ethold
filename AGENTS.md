@@ -54,8 +54,8 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
 
 ## Conventions
 
-- Commit style: `subsystem: imperative summary` (max 75 chars)
-  - Body: describe problem and technical solution in detail, wrapped at 75 columns
+- Commit style: `subsystem: imperative summary` (max 50 chars)
+  - Body: describe problem and technical solution in detail, wrapped at 72 columns
   - Commits MUST be small and bisectable: each commit is a single logical unit that compiles and passes tests independently; split refactors, features, and fixes across separate commits
   - AI agents MUST NOT add `Signed-off-by` tags (only human contributors certify DCO)
   - AI-assisted commits MUST include: `Assisted-by: <model-name> <tool>` (e.g. `Assisted-by: gemini-3.8-flash-medium Antigravity`)
