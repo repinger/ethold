@@ -55,8 +55,8 @@ This file configures the underlying HTTP transport for all network communication
 ### Features
 
 - **Cookie Jar:** Uses `net/http/cookiejar` so that all requests share session cookies.
-- **Browser Profile:** Selects a realistic browser header profile on startup (Chrome, Firefox, Safari, or Edge).
-- **Header Injection:** Wraps transport with `headerTransport` to add `User-Agent`, `Accept-Language`, and `Sec-CH-UA` headers to target hosts.
+- **Browser Profile:** Selects a realistic browser header profile on startup (Chrome, Firefox, Safari, or Edge) and rotates it periodically every 12–24 hours with jitter.
+- **Header Injection:** Wraps transport with `headerTransport` to add `User-Agent`, `Accept-Language`, `Origin`, `Referer`, and `Sec-CH-UA` headers to target hosts.
 - **Connection Pooling:** Configures up to 64 idle connections (32 per host), 90-second idle timeout, 30-second total request timeout.
 
 ### Primary Functions

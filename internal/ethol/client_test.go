@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 )
 
 var legitUserAgents = func() []string {
@@ -107,6 +108,12 @@ func TestNewHTTPClient_TargetHostHeaders(t *testing.T) {
 	if got := captured.Get("Sec-Fetch-Site"); got != "same-origin" {
 		t.Errorf("Sec-Fetch-Site = %q, want same-origin", got)
 	}
+	if got := captured.Get("Origin"); got != ts.URL {
+		t.Errorf("Origin = %q, want %q", got, ts.URL)
+	}
+	if got := captured.Get("Referer"); got != ts.URL+"/" {
+		t.Errorf("Referer = %q, want %q", got, ts.URL+"/")
+	}
 
 	ua := captured.Get("User-Agent")
 	secChUa := captured.Get("Sec-CH-UA")
@@ -158,6 +165,12 @@ func TestNewHTTPClient_ExternalHostSkipsTargetHeaders(t *testing.T) {
 	if got := captured.Get("Sec-CH-UA"); got != "" {
 		t.Errorf("Sec-CH-UA should be empty on external host, got %q", got)
 	}
+	if got := captured.Get("Origin"); got != "" {
+		t.Errorf("Origin should be empty on external host, got %q", got)
+	}
+	if got := captured.Get("Referer"); got != "" {
+		t.Errorf("Referer should be empty on external host, got %q", got)
+	}
 }
 
 func TestNewHTTPClient_PreservesExplicitHeaders(t *testing.T) {
@@ -200,4 +213,30 @@ type testRoundTripper struct {
 
 func (t *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.fn(req)
+}
+
+func TestHeaderTransport_ProfileRotation(t *testing.T) {
+	now := time.Now()
+	r1 := nextProfileRotation(now)
+	if r1.Before(now.Add(minProfileTTL)) || r1.After(now.Add(maxProfileTTL)) {
+		t.Errorf("rotation %v out of range [%v, %v]", r1, now.Add(minProfileTTL), now.Add(maxProfileTTL))
+	}
+
+	transport := &headerTransport{
+		base: &testRoundTripper{
+			fn: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusOK}, nil
+			},
+		},
+		profile:    browserProfiles[0],
+		nextRotate: now.Add(-1 * time.Second), // expired
+	}
+
+	p := transport.currentProfile()
+	if !slices.Contains(legitUserAgents, p.userAgent) {
+		t.Errorf("got unexpected User-Agent after rotation: %q", p.userAgent)
+	}
+	if !transport.nextRotate.After(now) {
+		t.Errorf("nextRotate was not advanced into future: %v", transport.nextRotate)
+	}
 }

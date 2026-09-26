@@ -64,13 +64,46 @@ var browserProfiles = []browserProfile{
 	},
 }
 
+const (
+	minProfileTTL = 12 * time.Hour
+	maxProfileTTL = 24 * time.Hour
+)
+
 type headerTransport struct {
-	base    http.RoundTripper
-	profile browserProfile
+	base       http.RoundTripper
+	mu         sync.RWMutex
+	profile    browserProfile
+	nextRotate time.Time
+}
+
+func (t *headerTransport) currentProfile() browserProfile {
+	t.mu.RLock()
+	if time.Now().Before(t.nextRotate) {
+		p := t.profile
+		t.mu.RUnlock()
+		return p
+	}
+	t.mu.RUnlock()
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if time.Now().Before(t.nextRotate) {
+		return t.profile
+	}
+	t.profile = randomBrowserProfile()
+	t.nextRotate = nextProfileRotation(time.Now())
+	return t.profile
+}
+
+func nextProfileRotation(now time.Time) time.Time {
+	diff := maxProfileTTL - minProfileTTL
+	jitter := time.Duration(rand.Int64N(int64(diff) + 1))
+	return now.Add(minProfileTTL + jitter)
 }
 
 func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	setDefaultHeader(req.Header, "User-Agent", t.profile.userAgent)
+	profile := t.currentProfile()
+	setDefaultHeader(req.Header, "User-Agent", profile.userAgent)
 
 	if isTargetHost(req.URL.Hostname()) {
 		setDefaultHeader(req.Header, "Accept", "application/json, text/plain, */*")
@@ -78,10 +111,15 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		setDefaultHeader(req.Header, "Sec-Fetch-Site", "same-origin")
 		setDefaultHeader(req.Header, "Sec-Fetch-Mode", "cors")
 		setDefaultHeader(req.Header, "Sec-Fetch-Dest", "empty")
-		if t.profile.secChUa != "" {
-			setDefaultHeader(req.Header, "Sec-CH-UA", t.profile.secChUa)
-			setDefaultHeader(req.Header, "Sec-CH-UA-Mobile", t.profile.secChUaMobile)
-			setDefaultHeader(req.Header, "Sec-CH-UA-Platform", t.profile.secChUaPlatform)
+		if req.URL.Scheme != "" && req.URL.Host != "" {
+			origin := req.URL.Scheme + "://" + req.URL.Host
+			setDefaultHeader(req.Header, "Origin", origin)
+			setDefaultHeader(req.Header, "Referer", origin+"/")
+		}
+		if profile.secChUa != "" {
+			setDefaultHeader(req.Header, "Sec-CH-UA", profile.secChUa)
+			setDefaultHeader(req.Header, "Sec-CH-UA-Mobile", profile.secChUaMobile)
+			setDefaultHeader(req.Header, "Sec-CH-UA-Platform", profile.secChUaPlatform)
 		}
 	}
 
@@ -170,8 +208,12 @@ func NewHTTPClient() (*http.Client, error) {
 	}
 
 	return &http.Client{
-		Jar:       jar,
-		Transport: &headerTransport{base: transport, profile: randomBrowserProfile()},
-		Timeout:   30 * time.Second,
+		Jar: jar,
+		Transport: &headerTransport{
+			base:       transport,
+			profile:    randomBrowserProfile(),
+			nextRotate: nextProfileRotation(time.Now()),
+		},
+		Timeout: 30 * time.Second,
 	}, nil
 }
