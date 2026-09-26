@@ -1038,14 +1038,15 @@ func TestSoakMemory(t *testing.T) {
 
 	commands := []string{"/status", "/jadwal", "/tugas", "/presensi_kelas", "/rekap", "/materi", "/ujian", "/pengumuman", "/debug"}
 
-	// Warmup 5 cycles
-	for i := 0; i < 5; i++ {
+	// Warmup 10 cycles
+	for i := 0; i < 10; i++ {
 		_, _ = scanner.ScanOnce(ctx)
 		for _, cmd := range commands {
 			_ = scanner.HandleTelegramCommand(ctx, cmd)
 		}
 	}
 
+	runtime.GC()
 	runtime.GC()
 	var mStart runtime.MemStats
 	runtime.ReadMemStats(&mStart)
@@ -1066,6 +1067,7 @@ func TestSoakMemory(t *testing.T) {
 	}
 
 	runtime.GC()
+	runtime.GC()
 	var mEnd runtime.MemStats
 	runtime.ReadMemStats(&mEnd)
 	goroutinesEnd := runtime.NumGoroutine()
@@ -1085,6 +1087,15 @@ func TestSoakMemory(t *testing.T) {
 		goroutinesStart, goroutinesEnd, goroutinesEnd-goroutinesStart)
 	t.Logf("TotalAlloc:  delta=%d B (%.2f MB)",
 		mEnd.TotalAlloc-mStart.TotalAlloc, float64(mEnd.TotalAlloc-mStart.TotalAlloc)/(1024*1024))
+
+	// Retention and leak assertions
+	const maxHeapGrowth = 400 * 1024 // 400 KB
+	if deltaAlloc := int64(mEnd.HeapAlloc) - int64(mStart.HeapAlloc); deltaAlloc > maxHeapGrowth {
+		t.Errorf("potential memory leak: HeapAlloc grew %d B (> %d B limit)", deltaAlloc, maxHeapGrowth)
+	}
+	if goroutinesEnd > goroutinesStart {
+		t.Errorf("goroutine leak: started with %d, ended with %d", goroutinesStart, goroutinesEnd)
+	}
 }
 
 func TestScanner_NotifyStartup(t *testing.T) {

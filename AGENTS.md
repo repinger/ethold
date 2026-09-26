@@ -70,6 +70,10 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
   - AI agents MUST run relevant benchmarks before modifying code to establish a baseline (`go test -run='^$' -bench=. -benchmem ./internal/ethol`).
   - After making modifications, re-run benchmarks and compare `ns/op`, `B/op`, and `allocs/op`.
   - If results show performance regression compared to baseline, the agent MUST revise and optimize the implementation until performance matches or improves upon baseline before completing work.
+- Memory leak & soak testing gating:
+  - AI agents MUST run the soak test before and after modifying code: `go test -v -count=1 -run TestSoakMemory ./internal/ethol`.
+  - Commits MUST NOT introduce positive net goroutine growth (`goroutinesEnd > goroutinesStart`) or excessive heap retention (`HeapAlloc delta > 400KB` in soak test).
+  - Verify that idle goroutines shut down cleanly and in-memory caches or state maps are pruned or bounded.
 - Dead & unused code elimination:
   - AI agents MUST scan for and remove dead, unreachable, or obsolete code (functions, methods, types, fields, parameters, constants) before finalizing changes.
   - Verify both default and `-tags dev` build configurations using `deadcode` (`go run golang.org/x/tools/cmd/deadcode@latest ./...`) and `golangci-lint run --build-tags dev ./...`.
