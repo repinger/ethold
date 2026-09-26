@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -318,8 +319,18 @@ func (am *AcademicManager) fetchStudentHistory(ctx context.Context, c Course, st
 }
 
 func (am *AcademicManager) fetchLecturerHistory(ctx context.Context, c Course, tahun, semester int) ([]lecturerHistoryItem, error) {
+	dosenParam := ""
+	if id := parseCount(c.NomorDosen); id > 0 {
+		dosenParam = strconv.Itoa(id)
+	} else if c.Dosen != "" && c.Dosen != "Dosen Pengampu" {
+		dosenParam = url.QueryEscape(c.Dosen)
+	}
+	if dosenParam == "" {
+		return nil, nil
+	}
+
 	dosenURL := fmt.Sprintf("%s/api/presensi/get-tanggal-presensi-dosen-per-semester?tahun=%d&semester=%d&kuliah=%d&dosen=%s",
-		am.baseURL, tahun, semester, c.Nomor, url.QueryEscape(c.Dosen))
+		am.baseURL, tahun, semester, c.Nomor, dosenParam)
 	reqDosen, err := http.NewRequestWithContext(ctx, http.MethodGet, dosenURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create presensi dosen req: %w", err)

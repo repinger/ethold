@@ -273,6 +273,56 @@ func TestAcademicManager_AttendanceRoster(t *testing.T) {
 	}
 }
 
+func TestAcademicManager_Attendance_NomorDosen(t *testing.T) {
+	var requestedDosenParam string
+	var lecturerCallCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/presensi/riwayat":
+			w.Write([]byte(`[{"tanggal":"24-09-2026"},{"tanggal":"17-09-2026"}]`))
+		case "/api/presensi/get-tanggal-presensi-dosen-per-semester":
+			atomic.AddInt32(&lecturerCallCount, 1)
+			requestedDosenParam = r.URL.Query().Get("dosen")
+			w.Write([]byte(`[{"waktu_indonesia":"24-09-2026"},{"waktu_indonesia":"17-09-2026"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+	courses := []Course{
+		{Nomor: 221581, Matakuliah: "Workshop Matematika", Dosen: "Mike Oxmall", NomorDosen: 6769},
+		{Nomor: 221167, Matakuliah: "Proyek Akhir-1", Dosen: "Dosen Pengampu", NomorDosen: nil},
+	}
+
+	now := time.Date(2026, 9, 26, 12, 0, 0, 0, WIBLocation)
+	statsText, err := am.FormatAttendanceStatsText(ctx, now, 2026, 1, 23573, courses)
+	if err != nil {
+		t.Fatalf("FormatAttendanceStatsText failed: %v", err)
+	}
+
+	if requestedDosenParam != "6769" {
+		t.Errorf("expected dosen param '6769', got %q", requestedDosenParam)
+	}
+	if calls := atomic.LoadInt32(&lecturerCallCount); calls != 1 {
+		t.Errorf("expected exactly 1 lecturer history call (Proyek Akhir-1 skipped), got %d", calls)
+	}
+	if !strings.Contains(statsText, "Kehadiran: 2/2 (100.0%)") {
+		t.Errorf("expected 'Kehadiran: 2/2 (100.0%%)' in stats text, got:\n%s", statsText)
+	}
+	if !strings.Contains(statsText, "Kehadiran: 2/0 (100.0%)") {
+		t.Errorf("expected Proyek Akhir-1 to have 'Kehadiran: 2/0 (100.0%%)', got:\n%s", statsText)
+	}
+}
+
 func BenchmarkFormatRosterText(b *testing.B) {
 	course := Course{Nomor: 501, Matakuliah: "Algoritma Pemrograman"}
 	attendees := make([]RosterItem, 25)

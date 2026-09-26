@@ -17,6 +17,7 @@ type Course struct {
 	JenisSchema    int    `json:"jenisSchema"`
 	KuliahAsal     int    `json:"kuliah_asal"`
 	Dosen          string `json:"dosen"`
+	NomorDosen     any    `json:"nomor_dosen"`
 	NamaMatakuliah any    `json:"nama_matakuliah"`
 	Matakuliah     any    `json:"matakuliah"`
 }
