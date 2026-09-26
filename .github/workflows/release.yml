@@ -24,12 +24,25 @@ jobs:
           check-latest: true
 
       - name: Run tests
-        run: go test -v ./...
+        run: |
+          go test -v ./...
+          go test -tags dev -v ./...
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: latest
+
+      - name: Run golangci-lint (dev)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          args: --build-tags dev
+
+      - name: Dead code analysis
+        run: |
+          go run golang.org/x/tools/cmd/deadcode@latest ./...
+          go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./...
 
   binaries:
     name: Release Multi-Arch Binaries

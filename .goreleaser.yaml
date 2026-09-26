@@ -25,6 +25,8 @@ builds:
         goarch: arm
       - goos: windows
         goarch: arm
+    flags:
+      - -trimpath
     ldflags:
       - -s -w -X main.version={{ if .IsSnapshot }}{{ if .Tag }}{{ .Tag }}-dev-{{ .ShortCommit }}{{ else }}dev-{{ .ShortCommit }}{{ end }}{{ else }}{{ .Tag }}{{ end }}
 
