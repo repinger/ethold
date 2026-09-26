@@ -58,6 +58,7 @@ ETHOL_AUTO_PRESENCE=
 | `TELEGRAM_COMMAND_THREAD_ID`  | No       | `0`     | Forum topic thread ID where bot commands are accepted (`0` = general chat)                 |
 | `TELEGRAM_NOTIF_THREAD_ID`    | No       | `0`     | Forum topic thread ID where attendance alerts are sent (`0` = general chat)                 |
 | `ETHOL_AUTO_PRESENCE`         | No       | `false` | Enable automated presence scanning and submission (`true`, `1`, `yes`)                      |
+| `ETHOL_STATE_RETENTION_DAYS`  | No       | `90`    | Number of days to retain presence records in state file (`0` disables pruning)               |
 
 > **Note:** Configuration precedence: **CLI flags > System environment variables > `.env` file**.
 > Credentials can also be supplied via `-username` and `-password` CLI flags.
@@ -99,6 +100,7 @@ go test -v ./...
 | `-telegram-command-thread-id` | `0`                  | Telegram forum topic thread ID for commands        |
 | `-telegram-notif-thread-id`   | `0`                  | Telegram forum topic thread ID for alerts          |
 | `-state`                      | `attended_keys.json` | Path to state persistence file                     |
+| `-state-retention-days`       | `90`                 | Days to retain presence records (0 = keep forever) |
 | `-concurrency`                | `4`                  | Number of concurrent course probe workers          |
 | `-once`                       | `false`              | Run single scan pass and exit                      |
 | `-verbose`                    | `false`              | Enable debug logging                               |

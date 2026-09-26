@@ -249,13 +249,14 @@ This file manages disk persistence for recorded attendance keys.
 
 ### Primary Functions
 
-- `NewStateManager(path string) (*StateManager, error)`: Loads existing state and verifies file permissions.
+- `NewStateManager(path string, retentionDays int) (*StateManager, error)`: Loads existing state, verifies file permissions, and prunes records older than the retention threshold.
 - `(sm *StateManager) Path() string`: Returns the configured state file path.
 - `(sm *StateManager) Has(key string) bool`: Checks if a key was already recorded.
 - `(sm *StateManager) Count() int`: Returns total count of recorded presence keys.
 - `(sm *StateManager) CountWithPrefix(prefix string) int`: Returns count of keys matching date prefix.
-- `(sm *StateManager) AddRecord(records ...PresenceRecord) error`: Adds records and writes atomically to disk.
+- `(sm *StateManager) AddRecord(records ...PresenceRecord) error`: Adds records, prunes expired entries, and writes atomically to disk using a reusable buffered writer.
 - `(sm *StateManager) RecordsWithPrefix(prefix string) []PresenceRecord`: Returns records matching a date prefix.
+- `(sm *StateManager) PruneOlderThan(retentionDays int) int`: Evicts records and keys older than the specified day window.
 
 ---
 
