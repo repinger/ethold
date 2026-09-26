@@ -98,6 +98,7 @@ This file fetches enrolled courses and caches the results in memory.
   - `JenisSchema int`: Scheme category.
   - `KuliahAsal int`: Source course reference ID.
   - `Dosen string`: Name of the primary lecturer.
+  - `NomorDosen any`: Numeric lecturer identifier for presensi queries.
   - `CourseName() string`: Method that parses polymorphic name fields into a string.
 - `CourseManager`: Caches course lists using a configured time-to-live (TTL) duration.
 
