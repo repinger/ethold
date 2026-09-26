@@ -111,6 +111,6 @@ Adhere to these rules when making changes:
 - Minimize external dependencies. Use the Go standard library first.
 - Write tests beside each source file using the `_test.go` naming convention.
 - Use `t.TempDir()` to create isolated directories for state tests.
-- Format commit messages as `subsystem: imperative summary` (max 75 chars). Examples: `scanner: fix race on pause flag`, `docs: update api-reference`. This is **not** Conventional Commits format — no parenthesized scopes, no `feat:`/`fix:` prefixes.
+- Format commit messages following the standard 50/72 rule: `subsystem: imperative summary` (max 50 chars), body wrapped at 72 columns. Examples: `scanner: fix race on pause flag`, `docs: update api-reference`. This is **not** Conventional Commits format — no parenthesized scopes, no `feat:`/`fix:` prefixes.
 - Keep commits small and bisectable. Each commit must be a single logical unit that compiles and passes tests independently; split refactors, features, and fixes across separate commits.
 - Scan for and eliminate unused or dead code before merging changes. Verify both default and `-tags dev` builds with `deadcode` and `golangci-lint`. Avoid accumulating obsolete structs, fields, unused methods, or dead helpers. Code only referenced in tests belongs in `*_test.go`.
