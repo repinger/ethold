@@ -61,6 +61,11 @@ jobs:
           go build -v ./cmd/ethold
           go build -tags dev -v ./cmd/ethold
 
+      - name: Dead code analysis
+        run: |
+          go run golang.org/x/tools/cmd/deadcode@latest ./...
+          go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./...
+
   docker:
     name: Build & Push Dev Container
     needs: test
