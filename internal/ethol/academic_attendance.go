@@ -313,7 +313,9 @@ func (am *AcademicManager) fetchStudentHistory(ctx context.Context, c Course, st
 	}
 	var studentItems []studentHistoryItem
 	if respHist.StatusCode == http.StatusOK {
-		_ = json.NewDecoder(io.LimitReader(respHist.Body, 256*1024)).Decode(&studentItems)
+		if err := json.NewDecoder(io.LimitReader(respHist.Body, 256*1024)).Decode(&studentItems); err != nil {
+			return nil, fmt.Errorf("decode riwayat: %w", err)
+		}
 	}
 	return studentItems, nil
 }
@@ -349,7 +351,9 @@ func (am *AcademicManager) fetchLecturerHistory(ctx context.Context, c Course, t
 	}
 	var lecturerItems []lecturerHistoryItem
 	if respDosen.StatusCode == http.StatusOK {
-		_ = json.NewDecoder(io.LimitReader(respDosen.Body, 256*1024)).Decode(&lecturerItems)
+		if err := json.NewDecoder(io.LimitReader(respDosen.Body, 256*1024)).Decode(&lecturerItems); err != nil {
+			return nil, fmt.Errorf("decode presensi dosen: %w", err)
+		}
 	}
 	return lecturerItems, nil
 }

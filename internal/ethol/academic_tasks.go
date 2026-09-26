@@ -114,7 +114,11 @@ taskLoop:
 		return nil, firstErr
 	}
 
-	var pending []TaskItem
+	total := 0
+	for _, res := range results {
+		total += len(res)
+	}
+	pending := make([]TaskItem, 0, total)
 	for i, c := range courses {
 		for _, item := range results[i] {
 			if isTaskSubmitted(item.Submission) || isTaskClosed(item.Tutup) {

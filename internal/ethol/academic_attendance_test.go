@@ -323,6 +323,36 @@ func TestAcademicManager_Attendance_NomorDosen(t *testing.T) {
 	}
 }
 
+func TestAcademicManager_Attendance_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/presensi/riwayat":
+			w.Write([]byte(`{not valid json`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+	course := Course{Nomor: 501, Matakuliah: "Basis Data", Dosen: "Ir. Dosen"}
+
+	_, err = am.fetchStudentHistory(ctx, course, 1001)
+	if err == nil {
+		t.Fatal("expected error on malformed JSON, got nil")
+	}
+	if !strings.Contains(err.Error(), "decode riwayat") {
+		t.Errorf("expected error containing 'decode riwayat', got: %v", err)
+	}
+}
+
 func BenchmarkFormatRosterText(b *testing.B) {
 	course := Course{Nomor: 501, Matakuliah: "Algoritma Pemrograman"}
 	attendees := make([]RosterItem, 25)

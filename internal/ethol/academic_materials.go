@@ -122,7 +122,11 @@ materialLoop:
 		return nil, firstErr
 	}
 
-	var all []MaterialItem
+	total := 0
+	for _, res := range results {
+		total += len(res)
+	}
+	all := make([]MaterialItem, 0, total)
 	for i, c := range courses {
 		for _, item := range results[i] {
 			if item.KuliahID == 0 {
@@ -227,7 +231,11 @@ videoLoop:
 		return nil, firstErr
 	}
 
-	var all []VideoItem
+	total := 0
+	for _, res := range results {
+		total += len(res)
+	}
+	all := make([]VideoItem, 0, total)
 	for i, c := range courses {
 		for _, item := range results[i] {
 			if item.KuliahID == 0 {
