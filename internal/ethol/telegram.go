@@ -1167,7 +1167,8 @@ func (tn *TelegramNotifier) StartCommandPoller(ctx context.Context, handler func
 				return
 			}
 			slog.Warn("Telegram poller error", "error", err)
-			timer := time.NewTimer(3 * time.Second)
+			backoff := calculateJitter(3*time.Second, 0.30)
+			timer := time.NewTimer(backoff)
 			select {
 			case <-ctx.Done():
 				timer.Stop()
