@@ -18,6 +18,7 @@ type Config struct {
 	TelegramCommandThreadID int64
 	TelegramNotifThreadID   int64
 	AutoPresence            bool
+	StateRetentionDays      int
 }
 
 func parseBool(s string) bool {
@@ -67,6 +68,21 @@ func parseInt64(s string) int64 {
 	return v
 }
 
+func resolveInt(override int, key string, fileEnv map[string]string, defaultVal int) int {
+	if override != 0 {
+		return override
+	}
+	val := resolveValue("", key, fileEnv)
+	if val == "" {
+		return defaultVal
+	}
+	d, err := strconv.Atoi(strings.TrimSpace(val))
+	if err != nil || d < 0 {
+		return defaultVal
+	}
+	return d
+}
+
 func resolveInt64(override int64, key string, fileEnv map[string]string) int64 {
 	if override != 0 {
 		return override
@@ -102,6 +118,7 @@ func LoadConfig(path string, overrides ...Config) (*Config, error) {
 		TelegramCommandThreadID: resolveInt64(override.TelegramCommandThreadID, "TELEGRAM_COMMAND_THREAD_ID", env),
 		TelegramNotifThreadID:   resolveInt64(override.TelegramNotifThreadID, "TELEGRAM_NOTIF_THREAD_ID", env),
 		AutoPresence:            override.AutoPresence || parseBool(resolveValue("", "ETHOL_AUTO_PRESENCE", env)),
+		StateRetentionDays:      resolveInt(override.StateRetentionDays, "ETHOL_STATE_RETENTION_DAYS", env, DefaultRetentionDays),
 	}
 
 	if cfg.Username == "" || cfg.Password == "" {

@@ -13,11 +13,15 @@ import (
 	"time"
 )
 
+// DefaultRetentionDays is the default duration for state record retention (approx 1 semester).
+const DefaultRetentionDays = 90
+
 type PresenceRecord struct {
 	Key        string `json:"key"`
 	CourseName string `json:"course_name,omitempty"`
 	Dosen      string `json:"dosen,omitempty"`
 	Time       string `json:"time,omitempty"`
+	Date       string `json:"date,omitempty"`
 }
 
 type stateFile struct {
@@ -27,16 +31,38 @@ type stateFile struct {
 }
 
 type StateManager struct {
-	mu      sync.RWMutex
-	path    string
-	records map[string]PresenceRecord
-	keyList []string
-	recs    map[string]PresenceRecord
+	mu            sync.RWMutex
+	path          string
+	retentionDays int
+	records       map[string]PresenceRecord
+	keyList       []string
+	recs          map[string]PresenceRecord
+	bw            *bufio.Writer
 }
 
-func NewStateManager(path string) (*StateManager, error) {
+func parseRecordDate(key string, rec PresenceRecord) (time.Time, bool) {
+	if rec.Date != "" {
+		if t, err := time.Parse("2006-01-02", rec.Date); err == nil {
+			return t, true
+		}
+	}
+	if len(key) >= 10 && key[4] == '-' && key[7] == '-' {
+		if t, err := time.Parse("2006-01-02", key[:10]); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func NewStateManager(path string, retentionDays ...int) (*StateManager, error) {
+	retention := DefaultRetentionDays
+	if len(retentionDays) > 0 {
+		retention = retentionDays[0]
+	}
+
 	sm := &StateManager{
-		path: path,
+		path:          path,
+		retentionDays: retention,
 	}
 
 	dir := filepath.Dir(path)
@@ -88,6 +114,11 @@ func NewStateManager(path string) (*StateManager, error) {
 		}
 	}
 
+	if sm.retentionDays > 0 {
+		cutoff := time.Now().AddDate(0, 0, -sm.retentionDays)
+		sm.pruneLocked(cutoff)
+	}
+
 	return sm, nil
 }
 
@@ -95,6 +126,17 @@ func (sm *StateManager) Path() string {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return sm.path
+}
+
+func (sm *StateManager) pruneLocked(cutoff time.Time) int {
+	pruned := 0
+	for k, rec := range sm.records {
+		if recDate, ok := parseRecordDate(k, rec); ok && recDate.Before(cutoff) {
+			delete(sm.records, k)
+			pruned++
+		}
+	}
+	return pruned
 }
 
 func (sm *StateManager) Has(key string) bool {
@@ -146,7 +188,15 @@ func (sm *StateManager) AddRecord(recs ...PresenceRecord) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	nowDate := time.Now().Format("2006-01-02")
 	for _, rec := range recs {
+		if rec.Date == "" {
+			if t, ok := parseRecordDate(rec.Key, rec); ok {
+				rec.Date = t.Format("2006-01-02")
+			} else {
+				rec.Date = nowDate
+			}
+		}
 		sm.records[rec.Key] = rec
 	}
 
@@ -154,6 +204,11 @@ func (sm *StateManager) AddRecord(recs ...PresenceRecord) error {
 }
 
 func (sm *StateManager) saveLocked() error {
+	if sm.retentionDays > 0 {
+		cutoff := time.Now().AddDate(0, 0, -sm.retentionDays)
+		sm.pruneLocked(cutoff)
+	}
+
 	sm.keyList = sm.keyList[:0]
 	if sm.recs == nil {
 		sm.recs = make(map[string]PresenceRecord)
@@ -181,19 +236,26 @@ func (sm *StateManager) saveLocked() error {
 	}
 	tmpName := tmpFile.Name()
 
-	bw := bufio.NewWriter(tmpFile)
-	enc := json.NewEncoder(bw)
+	if sm.bw == nil {
+		sm.bw = bufio.NewWriterSize(tmpFile, 8192)
+	} else {
+		sm.bw.Reset(tmpFile)
+	}
+	enc := json.NewEncoder(sm.bw)
 	if err := enc.Encode(sf); err != nil {
 		_ = tmpFile.Close()
 		_ = os.Remove(tmpName)
+		sm.bw.Reset(nil)
 		return fmt.Errorf("encode state file: %w", err)
 	}
 
-	if err := bw.Flush(); err != nil {
+	if err := sm.bw.Flush(); err != nil {
 		_ = tmpFile.Close()
 		_ = os.Remove(tmpName)
+		sm.bw.Reset(nil)
 		return fmt.Errorf("flush temp state file: %w", err)
 	}
+	sm.bw.Reset(nil)
 
 	if err := tmpFile.Close(); err != nil {
 		_ = os.Remove(tmpName)

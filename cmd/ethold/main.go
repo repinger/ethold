@@ -104,6 +104,7 @@ func run() error {
 	telegramChatID := flag.String("telegram-chat-id", "", "Telegram chat ID")
 	telegramCommandThreadID := flag.Int64("telegram-command-thread-id", 0, "Telegram command topic thread ID (forum supergroups)")
 	telegramNotifThreadID := flag.Int64("telegram-notif-thread-id", 0, "Telegram notification topic thread ID (forum supergroups)")
+	stateRetentionDays := flag.Int("state-retention-days", 0, "Days to retain presence state records (0 to use config default)")
 	flag.Parse()
 
 	if *showVersion {
@@ -111,6 +112,7 @@ func run() error {
 		return nil
 	}
 
+	initDevPprof()
 	logLevel := ethol.DefaultLogLevel(*verbose)
 	slog.SetDefault(slog.New(ethol.NewPrettyHandler(os.Stdout, &ethol.PrettyHandlerOptions{Level: logLevel})))
 	slog.Info("Starting ethold", "version", getVersion())
@@ -148,8 +150,11 @@ func run() error {
 		state    *ethol.StateManager
 		presence *ethol.PresenceEngine
 	)
+	if *stateRetentionDays > 0 {
+		cfg.StateRetentionDays = *stateRetentionDays
+	}
 	if cfg.AutoPresence {
-		state, err = ethol.NewStateManager(*statePath)
+		state, err = ethol.NewStateManager(*statePath, cfg.StateRetentionDays)
 		if err != nil {
 			slog.Error("Failed to initialize state manager", "path", *statePath, "error", err)
 			return err

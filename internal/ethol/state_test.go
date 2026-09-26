@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestStateManager(t *testing.T) {
@@ -150,6 +151,85 @@ func TestStateManager_CountWithPrefix(t *testing.T) {
 	}
 	if cnt := sm.CountWithPrefix("2026-09-12_"); cnt != 0 {
 		t.Fatalf("expected 0, got %d", cnt)
+	}
+}
+
+func TestStateManager_RetentionPruning(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "retention.json")
+
+	// Set retention of 10 days
+	sm, err := NewStateManager(statePath, 10)
+	if err != nil {
+		t.Fatalf("create state manager: %v", err)
+	}
+
+	oldDate := time.Now().AddDate(0, 0, -20).Format("2006-01-02")
+	recentDate := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
+
+	oldKey := oldDate + "_oldkey"
+	recentKey := recentDate + "_recentkey"
+
+	if err := sm.AddRecord(
+		PresenceRecord{Key: oldKey, CourseName: "Old Course", Date: oldDate},
+		PresenceRecord{Key: recentKey, CourseName: "Recent Course", Date: recentDate},
+		PresenceRecord{Key: "undated_key", CourseName: "Undated Course"},
+	); err != nil {
+		t.Fatalf("add records: %v", err)
+	}
+
+	// oldKey should be pruned during saveLocked because it's 20 days old (> 10 days retention)
+	if sm.Has(oldKey) {
+		t.Errorf("expected %s to be pruned", oldKey)
+	}
+	if !sm.Has(recentKey) {
+		t.Errorf("expected %s to be kept", recentKey)
+	}
+	if !sm.Has("undated_key") {
+		t.Error("expected undated_key to be kept")
+	}
+
+	// Reload state and verify persistence reflects pruning
+	sm2, err := NewStateManager(statePath, 10)
+	if err != nil {
+		t.Fatalf("reload state: %v", err)
+	}
+	if sm2.Has(oldKey) {
+		t.Errorf("expected reloaded state not to have %s", oldKey)
+	}
+	if !sm2.Has(recentKey) {
+		t.Errorf("expected reloaded state to have %s", recentKey)
+	}
+}
+
+func (sm *StateManager) pruneOlderThanForTest(cutoff time.Time) int {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	return sm.pruneLocked(cutoff)
+}
+
+func TestStateManager_PruneOlderThan(t *testing.T) {
+	sm := &StateManager{
+		records: make(map[string]PresenceRecord),
+	}
+	sm.records["2026-08-01_a"] = PresenceRecord{Key: "2026-08-01_a", Date: "2026-08-01"}
+	sm.records["2026-09-01_b"] = PresenceRecord{Key: "2026-09-01_b", Date: "2026-09-01"}
+	sm.records["undated"] = PresenceRecord{Key: "undated"}
+
+	cutoff, _ := time.Parse("2006-01-02", "2026-08-15")
+	pruned := sm.pruneOlderThanForTest(cutoff)
+
+	if pruned != 1 {
+		t.Fatalf("expected 1 pruned record, got %d", pruned)
+	}
+	if sm.Has("2026-08-01_a") {
+		t.Error("expected 2026-08-01_a to be pruned")
+	}
+	if !sm.Has("2026-09-01_b") {
+		t.Error("expected 2026-09-01_b to be kept")
+	}
+	if !sm.Has("undated") {
+		t.Error("expected undated to be kept")
 	}
 }
 

@@ -37,6 +37,7 @@ The table below lists all supported environment variables:
 | `TELEGRAM_COMMAND_THREAD_ID` | No       | `0`     | Forum topic thread ID where bot commands are accepted and replied to.                           |
 | `TELEGRAM_NOTIF_THREAD_ID`   | No       | `0`     | Forum topic thread ID where notifications and alerts are posted.                                |
 | `ETHOL_AUTO_PRESENCE`        | No       | `false` | Enables automated attendance scanning and submission (`true`, `1`, `yes`). Disabled by default. |
+| `ETHOL_STATE_RETENTION_DAYS` | No       | `90`    | Retention window in days for state records (0 disables auto-pruning).                           |
 
 > **Note:** Both `ETHOL_EMAIL` and `ETHOL_PASSWORD` are required (via flag, system env, or file).
 > If Telegram variables are empty, the application disables the Telegram integration.
@@ -74,6 +75,7 @@ You can control the application using command line flags:
 | `--telegram-command-thread-id`  | `0`                  | Forum topic thread ID where bot commands are accepted.                |
 | `--telegram-notif-thread-id`    | `0`                  | Forum topic thread ID where notifications are sent.                   |
 | `--state`                       | `attended_keys.json` | Path to the JSON state file.                                          |
+| `--state-retention-days`        | `90`                 | Days to retain presence state records (0 disables auto-pruning).      |
 | `--once`             | `false`              | Run a single scan pass and exit immediately.                          |
 | `--concurrency`      | `4`                  | Number of worker goroutines for course checks.                        |
 | `--verbose`          | `false`              | Show debug log messages in the console.                               |
