@@ -167,6 +167,24 @@ func BenchmarkExtractPresenceKey_Object(b *testing.B) {
 	}
 }
 
+func BenchmarkCheckCourse(b *testing.B) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"key": "session-101"}]`))
+	}))
+	defer server.Close()
+
+	client, _ := NewHTTPClient()
+	engine := NewPresenceEngine(client, server.URL)
+	c := Course{Nomor: 101}
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for b.Loop() {
+		_, _, _ = engine.CheckCourse(ctx, c)
+	}
+}
+
 func BenchmarkExtractPresenceKey_Empty(b *testing.B) {
 	// ponytail: empty array payload, add malformed JSON when parser resilience benchmarked
 	raw := []byte(`[]`)

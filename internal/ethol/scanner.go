@@ -52,6 +52,7 @@ type Scanner struct {
 	lastMode     string
 	startTime    time.Time
 	scanMu       sync.Mutex
+	queueBuf     []Course
 	statusMu     sync.RWMutex
 	lastScanTime time.Time
 	lastScanDur  time.Duration
@@ -227,21 +228,25 @@ func (s *Scanner) calculateScanInterval(base time.Duration) time.Duration {
 	return calculateJitter(base, 0.15)
 }
 
-func prepareCourseQueue(courses []Course, activeNomor int) []Course {
-	queue := make([]Course, len(courses))
-	copy(queue, courses)
-	if len(queue) <= 1 {
-		return queue
+func prepareCourseQueue(dst []Course, courses []Course, activeNomor int) []Course {
+	if cap(dst) >= len(courses) {
+		dst = dst[:len(courses)]
+	} else {
+		dst = make([]Course, len(courses))
+	}
+	copy(dst, courses)
+	if len(dst) <= 1 {
+		return dst
 	}
 
 	startIdx := 0
 	if activeNomor > 0 {
-		for i, c := range queue {
+		for i, c := range dst {
 			if c.Nomor == activeNomor {
 				if i > 0 {
-					activeCourse := queue[i]
-					copy(queue[1:i+1], queue[0:i])
-					queue[0] = activeCourse
+					activeCourse := dst[i]
+					copy(dst[1:i+1], dst[0:i])
+					dst[0] = activeCourse
 				}
 				startIdx = 1
 				break
@@ -250,12 +255,12 @@ func prepareCourseQueue(courses []Course, activeNomor int) []Course {
 	}
 
 	// ponytail: uniform shuffle for remaining courses; preserves active course priority at index 0.
-	toShuffle := queue[startIdx:]
+	toShuffle := dst[startIdx:]
 	rand.Shuffle(len(toShuffle), func(i, j int) {
 		toShuffle[i], toShuffle[j] = toShuffle[j], toShuffle[i]
 	})
 
-	return queue
+	return dst
 }
 
 func (s *Scanner) ScanOnce(ctx context.Context) (int, error) {
@@ -339,7 +344,8 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 			activeNomor = active.Nomor
 		}
 	}
-	courseQueue := prepareCourseQueue(courses, activeNomor)
+	s.queueBuf = prepareCourseQueue(s.queueBuf, courses, activeNomor)
+	courseQueue := s.queueBuf
 
 	type checkResult struct {
 		course Course

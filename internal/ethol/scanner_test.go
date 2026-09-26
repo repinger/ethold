@@ -450,18 +450,20 @@ func TestPrepareCourseQueue(t *testing.T) {
 	}
 
 	// 1. Edge cases
-	if len(prepareCourseQueue(nil, 0)) != 0 {
+	if len(prepareCourseQueue(nil, nil, 0)) != 0 {
 		t.Errorf("expected empty queue for nil input")
 	}
 	single := []Course{{Nomor: 101}}
-	if res := prepareCourseQueue(single, 101); len(res) != 1 || res[0].Nomor != 101 {
+	if res := prepareCourseQueue(nil, single, 101); len(res) != 1 || res[0].Nomor != 101 {
 		t.Errorf("expected single element queue")
 	}
 
 	// 2. Active course pinning: active 103 must always be at index 0
 	orders := make(map[string]bool)
+	var dstBuf []Course
 	for i := 0; i < 50; i++ {
-		queue := prepareCourseQueue(courses, 103)
+		queue := prepareCourseQueue(dstBuf, courses, 103)
+		dstBuf = queue
 		if len(queue) != len(courses) {
 			t.Fatalf("expected len %d, got %d", len(courses), len(queue))
 		}
@@ -481,7 +483,7 @@ func TestPrepareCourseQueue(t *testing.T) {
 	// 3. No active course: entire queue shuffled
 	allOrders := make(map[string]bool)
 	for i := 0; i < 50; i++ {
-		queue := prepareCourseQueue(courses, 0)
+		queue := prepareCourseQueue(nil, courses, 0)
 		var ids []string
 		for _, c := range queue {
 			ids = append(ids, fmt.Sprintf("%d", c.Nomor))

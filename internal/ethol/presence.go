@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type PresenceEngine struct {
@@ -23,6 +24,12 @@ func NewPresenceEngine(client *http.Client, baseURL string) *PresenceEngine {
 		client:  client,
 		baseURL: strings.TrimRight(baseURL, "/"),
 	}
+}
+
+var checkBufPool = sync.Pool{
+	New: func() any {
+		return bytes.NewBuffer(make([]byte, 0, 4096))
+	},
 }
 
 func (pe *PresenceEngine) CheckCourse(ctx context.Context, c Course) (string, bool, error) {
@@ -48,11 +55,15 @@ func (pe *PresenceEngine) CheckCourse(ctx context.Context, c Course) (string, bo
 		return "", false, fmt.Errorf("check presence HTTP %d", resp.StatusCode)
 	}
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
-	if err != nil {
+	buf := checkBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer checkBufPool.Put(buf)
+
+	if _, err := buf.ReadFrom(io.LimitReader(resp.Body, 16*1024)); err != nil {
 		return "", false, fmt.Errorf("read presence check: %w", err)
 	}
 
+	raw := buf.Bytes()
 	key := extractPresenceKey(raw)
 	devLog("Presence checked", "course", c.CourseName(), "raw_len", len(raw), "key_found", key != "", "key", key)
 	if key != "" {
