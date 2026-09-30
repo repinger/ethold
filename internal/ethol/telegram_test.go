@@ -2127,6 +2127,25 @@ func TestTelegramNotifier_DirectChatPinning_CircuitBreaker(t *testing.T) {
 	}
 }
 
+func TestTelegramNotifier_StartCommandPoller_ShutdownWait(t *testing.T) {
+	tn := NewTelegramNotifier(nil, "", "token", "123")
+	var deleted atomic.Bool
+	tn.deleteWg.Add(1)
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		deleted.Store(true)
+		tn.deleteWg.Done()
+	}()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	tn.StartCommandPoller(ctx, func(ctx context.Context, cmd string) string { return "" })
+	if !deleted.Load() {
+		t.Error("expected StartCommandPoller to wait for pending background work on shutdown")
+	}
+}
+
 func BenchmarkTelegram_SplitMessage(b *testing.B) {
 	var sb strings.Builder
 	for i := 0; i < 200; i++ {

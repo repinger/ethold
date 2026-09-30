@@ -1203,6 +1203,7 @@ func (tn *TelegramNotifier) StartCommandPoller(ctx context.Context, handler func
 	if tn.token == "" || tn.chatID == "" {
 		return
 	}
+	defer tn.deleteWg.Wait()
 	slog.Info("Starting Telegram command poller")
 	var offset int64
 	for {
