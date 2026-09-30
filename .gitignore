@@ -4,3 +4,4 @@ attended_keys.json
 /ethold
 *.log
 *.tmp
+.agents/
