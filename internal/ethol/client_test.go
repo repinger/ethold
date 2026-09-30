@@ -207,6 +207,36 @@ func TestNewHTTPClient_PreservesExplicitHeaders(t *testing.T) {
 	}
 }
 
+func TestHeaderTransport_RoundTrip_DoesNotMutateRequest(t *testing.T) {
+	transport := &headerTransport{
+		base: &testRoundTripper{
+			fn: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+			},
+		},
+		profile: browserProfiles[0],
+	}
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://ethol.pens.ac.id/api/test", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	if len(req.Header) != 0 {
+		t.Fatalf("expected empty headers before RoundTrip, got %v", req.Header)
+	}
+
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if len(req.Header) != 0 {
+		t.Errorf("original req.Header mutated: got %v, want empty", req.Header)
+	}
+}
+
 type testRoundTripper struct {
 	fn func(req *http.Request) (*http.Response, error)
 }

@@ -102,39 +102,40 @@ func nextProfileRotation(now time.Time) time.Time {
 }
 
 func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req2 := req.Clone(req.Context())
 	profile := t.currentProfile()
-	setDefaultHeader(req.Header, "User-Agent", profile.userAgent)
+	setDefaultHeader(req2.Header, "User-Agent", profile.userAgent)
 
-	if isTargetHost(req.URL.Hostname()) {
-		setDefaultHeader(req.Header, "Accept", "application/json, text/plain, */*")
-		setDefaultHeader(req.Header, "Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
-		setDefaultHeader(req.Header, "Sec-Fetch-Site", "same-origin")
-		setDefaultHeader(req.Header, "Sec-Fetch-Mode", "cors")
-		setDefaultHeader(req.Header, "Sec-Fetch-Dest", "empty")
-		if req.URL.Scheme != "" && req.URL.Host != "" {
-			origin := req.URL.Scheme + "://" + req.URL.Host
-			setDefaultHeader(req.Header, "Origin", origin)
-			setDefaultHeader(req.Header, "Referer", origin+"/")
+	if isTargetHost(req2.URL.Hostname()) {
+		setDefaultHeader(req2.Header, "Accept", "application/json, text/plain, */*")
+		setDefaultHeader(req2.Header, "Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+		setDefaultHeader(req2.Header, "Sec-Fetch-Site", "same-origin")
+		setDefaultHeader(req2.Header, "Sec-Fetch-Mode", "cors")
+		setDefaultHeader(req2.Header, "Sec-Fetch-Dest", "empty")
+		if req2.URL.Scheme != "" && req2.URL.Host != "" {
+			origin := req2.URL.Scheme + "://" + req2.URL.Host
+			setDefaultHeader(req2.Header, "Origin", origin)
+			setDefaultHeader(req2.Header, "Referer", origin+"/")
 		}
 		if profile.secChUa != "" {
-			setDefaultHeader(req.Header, "Sec-CH-UA", profile.secChUa)
-			setDefaultHeader(req.Header, "Sec-CH-UA-Mobile", profile.secChUaMobile)
-			setDefaultHeader(req.Header, "Sec-CH-UA-Platform", profile.secChUaPlatform)
+			setDefaultHeader(req2.Header, "Sec-CH-UA", profile.secChUa)
+			setDefaultHeader(req2.Header, "Sec-CH-UA-Mobile", profile.secChUaMobile)
+			setDefaultHeader(req2.Header, "Sec-CH-UA-Platform", profile.secChUaPlatform)
 		}
 	}
 
 	if !isDevBuild {
-		return t.base.RoundTrip(req)
+		return t.base.RoundTrip(req2)
 	}
 
 	start := time.Now()
-	resp, err := t.base.RoundTrip(req)
+	resp, err := t.base.RoundTrip(req2)
 	dur := time.Since(start)
 	status := 0
 	if resp != nil {
 		status = resp.StatusCode
 	}
-	devLogHTTP(req.Method, req.URL.String(), status, dur, err)
+	devLogHTTP(req2.Method, req2.URL.String(), status, dur, err)
 	return resp, err
 }
 
