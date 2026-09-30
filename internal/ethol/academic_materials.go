@@ -32,16 +32,16 @@ func (m MaterialItem) ItemTitle() string {
 
 type VideoItem = MaterialItem
 
-func (am *AcademicManager) fetchMaterials(ctx context.Context, c Course) ([]MaterialItem, error) {
-	materiURL := fmt.Sprintf("%s/api/materi?matakuliah=%d&jenis_schema=%d", am.baseURL, c.Nomor, c.JenisSchema)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, materiURL, nil)
+func (am *AcademicManager) fetchCourseItems(ctx context.Context, c Course, apiPath, label string, cache map[int]cacheEntry[[]MaterialItem]) ([]MaterialItem, error) {
+	endpoint := fmt.Sprintf("%s%s", am.baseURL, apiPath)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create materi req: %w", err)
+		return nil, fmt.Errorf("create %s req: %w", label, err)
 	}
 
 	resp, err := am.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch materi: %w", err)
+		return nil, fmt.Errorf("fetch %s: %w", label, err)
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
@@ -57,13 +57,13 @@ func (am *AcademicManager) fetchMaterials(ctx context.Context, c Course) ([]Mate
 
 	var items []MaterialItem
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
-		return nil, fmt.Errorf("decode materi: %w", err)
+		return nil, fmt.Errorf("decode %s: %w", label, err)
 	}
 
 	am.mu.Lock()
 	now := time.Now()
 	am.sweepExpiredLocked(now)
-	am.materialCache[c.Nomor] = materialCacheEntry{
+	cache[c.Nomor] = cacheEntry[[]MaterialItem]{
 		items:     items,
 		timestamp: now,
 	}
@@ -72,7 +72,22 @@ func (am *AcademicManager) fetchMaterials(ctx context.Context, c Course) ([]Mate
 	return items, nil
 }
 
-func (am *AcademicManager) GetCourseMaterials(ctx context.Context, courses []Course) ([]MaterialItem, error) {
+func (am *AcademicManager) fetchMaterials(ctx context.Context, c Course) ([]MaterialItem, error) {
+	apiPath := fmt.Sprintf("/api/materi?matakuliah=%d&jenis_schema=%d", c.Nomor, c.JenisSchema)
+	return am.fetchCourseItems(ctx, c, apiPath, "materi", am.materialCache)
+}
+
+func (am *AcademicManager) fetchVideos(ctx context.Context, c Course) ([]VideoItem, error) {
+	apiPath := fmt.Sprintf("/api/video?kuliah=%d&jenis_schema=%d", c.Nomor, c.JenisSchema)
+	return am.fetchCourseItems(ctx, c, apiPath, "video", am.videoCache)
+}
+
+func (am *AcademicManager) getCourseItems(
+	ctx context.Context,
+	courses []Course,
+	cache map[int]cacheEntry[[]MaterialItem],
+	fetch func(context.Context, Course) ([]MaterialItem, error),
+) ([]MaterialItem, error) {
 	results := make([][]MaterialItem, len(courses))
 	var wg sync.WaitGroup
 	var errOnce sync.Once
@@ -82,10 +97,10 @@ func (am *AcademicManager) GetCourseMaterials(ctx context.Context, courses []Cou
 	defer cancel()
 
 	sem := make(chan struct{}, maxAcademicConcurrency)
-materialLoop:
+itemLoop:
 	for i, c := range courses {
 		am.mu.RLock()
-		entry, cached := am.materialCache[c.Nomor]
+		entry, cached := cache[c.Nomor]
 		am.mu.RUnlock()
 
 		if cached && time.Since(entry.timestamp) < am.ttl {
@@ -95,7 +110,7 @@ materialLoop:
 
 		select {
 		case <-ctx.Done():
-			break materialLoop
+			break itemLoop
 		case sem <- struct{}{}:
 		}
 
@@ -105,7 +120,7 @@ materialLoop:
 				<-sem
 				wg.Done()
 			}()
-			items, err := am.fetchMaterials(ctx, crs)
+			items, err := fetch(ctx, crs)
 			if err != nil {
 				errOnce.Do(func() {
 					firstErr = err
@@ -141,113 +156,12 @@ materialLoop:
 	return all, nil
 }
 
-func (am *AcademicManager) fetchVideos(ctx context.Context, c Course) ([]VideoItem, error) {
-	videoURL := fmt.Sprintf("%s/api/video?kuliah=%d&jenis_schema=%d", am.baseURL, c.Nomor, c.JenisSchema)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, videoURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create video req: %w", err)
-	}
-
-	resp, err := am.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch video: %w", err)
-	}
-	defer func() {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, ErrUnauthorized
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, nil
-	}
-
-	var items []VideoItem
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
-		return nil, fmt.Errorf("decode video: %w", err)
-	}
-
-	am.mu.Lock()
-	now := time.Now()
-	am.sweepExpiredLocked(now)
-	am.videoCache[c.Nomor] = videoCacheEntry{
-		items:     items,
-		timestamp: now,
-	}
-	am.mu.Unlock()
-
-	return items, nil
+func (am *AcademicManager) GetCourseMaterials(ctx context.Context, courses []Course) ([]MaterialItem, error) {
+	return am.getCourseItems(ctx, courses, am.materialCache, am.fetchMaterials)
 }
 
 func (am *AcademicManager) GetCourseVideos(ctx context.Context, courses []Course) ([]VideoItem, error) {
-	results := make([][]VideoItem, len(courses))
-	var wg sync.WaitGroup
-	var errOnce sync.Once
-	var firstErr error
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	sem := make(chan struct{}, maxAcademicConcurrency)
-videoLoop:
-	for i, c := range courses {
-		am.mu.RLock()
-		entry, cached := am.videoCache[c.Nomor]
-		am.mu.RUnlock()
-
-		if cached && time.Since(entry.timestamp) < am.ttl {
-			results[i] = entry.items
-			continue
-		}
-
-		select {
-		case <-ctx.Done():
-			break videoLoop
-		case sem <- struct{}{}:
-		}
-
-		wg.Add(1)
-		go func(idx int, crs Course) {
-			defer func() {
-				<-sem
-				wg.Done()
-			}()
-			items, err := am.fetchVideos(ctx, crs)
-			if err != nil {
-				errOnce.Do(func() {
-					firstErr = err
-					cancel()
-				})
-				return
-			}
-			results[idx] = items
-		}(i, c)
-	}
-	wg.Wait()
-
-	if firstErr != nil {
-		return nil, firstErr
-	}
-
-	total := 0
-	for _, res := range results {
-		total += len(res)
-	}
-	all := make([]VideoItem, 0, total)
-	for i, c := range courses {
-		for _, item := range results[i] {
-			if item.KuliahID == 0 {
-				item.KuliahID = c.Nomor
-			}
-			if item.CourseName == "" {
-				item.CourseName = c.CourseName()
-			}
-			all = append(all, item)
-		}
-	}
-	return all, nil
+	return am.getCourseItems(ctx, courses, am.videoCache, am.fetchVideos)
 }
 
 func (am *AcademicManager) FormatMaterialsText(ctx context.Context, courses []Course) (string, error) {
