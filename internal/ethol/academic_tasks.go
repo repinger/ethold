@@ -113,6 +113,9 @@ taskLoop:
 	if firstErr != nil {
 		return nil, firstErr
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	total := 0
 	for _, res := range results {

@@ -353,6 +353,21 @@ func TestAcademicManager_Attendance_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestAcademicManager_Attendance_CancelledContext(t *testing.T) {
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := NewAcademicManager(client, "http://127.0.0.1:9999", 5*time.Minute)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	courses := []Course{{Nomor: 501, Matakuliah: "Basis Data"}}
+	_, err = am.getAttendanceStatsAt(ctx, time.Now(), 2024, 1, 1001, courses)
+	if err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+}
+
 func BenchmarkFormatRosterText(b *testing.B) {
 	course := Course{Nomor: 501, Matakuliah: "Algoritma Pemrograman"}
 	attendees := make([]RosterItem, 25)

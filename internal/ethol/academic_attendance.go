@@ -522,6 +522,9 @@ courseLoop:
 	if firstErr != nil {
 		return nil, firstErr
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	for _, ca := range results {
 		stats.TotalMhsSemester += ca.Hadir

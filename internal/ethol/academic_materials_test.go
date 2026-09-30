@@ -186,3 +186,18 @@ func TestAcademicManager_FormatMaterialsText_Concurrent(t *testing.T) {
 		t.Errorf("expected GetCourseMaterials and GetCourseVideos to run concurrently in FormatMaterialsText")
 	}
 }
+
+func TestAcademicManager_Materials_CancelledContext(t *testing.T) {
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := NewAcademicManager(client, "http://127.0.0.1:9999", 5*time.Minute)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	courses := []Course{{Nomor: 501, Matakuliah: "Basis Data"}}
+	_, err = am.GetCourseMaterials(ctx, courses)
+	if err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+}

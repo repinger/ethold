@@ -198,3 +198,18 @@ func TestAcademicManager_Tasks_DeadlineSortingAndUrgency(t *testing.T) {
 		t.Errorf("expected past deadline badge in text, got:\n%s", txt)
 	}
 }
+
+func TestAcademicManager_Tasks_CancelledContext(t *testing.T) {
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := NewAcademicManager(client, "http://127.0.0.1:9999", 5*time.Minute)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	courses := []Course{{Nomor: 501, Matakuliah: "Basis Data"}}
+	_, err = am.GetPendingTasks(ctx, courses)
+	if err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+}
