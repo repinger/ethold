@@ -476,6 +476,9 @@ func TestTelegramNotifier_NotifyServerError(t *testing.T) {
 	if !strings.Contains(sentPayload.Text, "502 Bad Gateway") {
 		t.Errorf("expected error message detail, got: %s", sentPayload.Text)
 	}
+	if !sentPayload.DisableNotification {
+		t.Errorf("expected DisableNotification to be true for server error")
+	}
 }
 
 func TestTelegramNotifier_NotifyServerRecovery(t *testing.T) {
@@ -503,6 +506,9 @@ func TestTelegramNotifier_NotifyServerRecovery(t *testing.T) {
 
 	if !strings.Contains(sentPayload.Text, "LAYANAN ETHOL PULIH") {
 		t.Errorf("expected server recovery title, got: %s", sentPayload.Text)
+	}
+	if !sentPayload.DisableNotification {
+		t.Errorf("expected DisableNotification to be true for server recovery")
 	}
 }
 
@@ -534,6 +540,9 @@ func TestTelegramNotifier_NotifyAuthFailure(t *testing.T) {
 	}
 	if !strings.Contains(sentPayload.Text, "401 Unauthorized") {
 		t.Errorf("expected error message detail, got: %s", sentPayload.Text)
+	}
+	if sentPayload.DisableNotification {
+		t.Errorf("expected DisableNotification to be false for auth failure")
 	}
 }
 

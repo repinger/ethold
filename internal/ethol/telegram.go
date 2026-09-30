@@ -120,11 +120,12 @@ type tgInlineKeyboardMarkup struct {
 }
 
 type tgSendMessagePayload struct {
-	ChatID          string `json:"chat_id"`
-	MessageThreadID int64  `json:"message_thread_id,omitempty"`
-	Text            string `json:"text"`
-	ParseMode       string `json:"parse_mode"`
-	ReplyMarkup     any    `json:"reply_markup,omitempty"`
+	ChatID              string `json:"chat_id"`
+	MessageThreadID     int64  `json:"message_thread_id,omitempty"`
+	Text                string `json:"text"`
+	ParseMode           string `json:"parse_mode"`
+	ReplyMarkup         any    `json:"reply_markup,omitempty"`
+	DisableNotification bool   `json:"disable_notification,omitempty"`
 }
 
 func (tn *TelegramNotifier) SetInlineKeyboard(buttons [][]InlineButton) {
@@ -207,6 +208,11 @@ func (tn *TelegramNotifier) SendMessage(ctx context.Context, text string) error 
 	return err
 }
 
+func (tn *TelegramNotifier) SendSilentMessage(ctx context.Context, text string) error {
+	_, err := tn.sendMessageIDsInternal(ctx, text, nil, tn.notifThreadID, true)
+	return err
+}
+
 func (tn *TelegramNotifier) SendMessageToThread(ctx context.Context, text string, threadID int64) error {
 	_, err := tn.SendMessageIDsToThread(ctx, text, threadID)
 	return err
@@ -221,6 +227,10 @@ func (tn *TelegramNotifier) SendMessageIDsToThread(ctx context.Context, text str
 }
 
 func (tn *TelegramNotifier) SendMessageIDsWithMarkupToThread(ctx context.Context, text string, markup any, threadID int64) ([]int64, error) {
+	return tn.sendMessageIDsInternal(ctx, text, markup, threadID, false)
+}
+
+func (tn *TelegramNotifier) sendMessageIDsInternal(ctx context.Context, text string, markup any, threadID int64, silent bool) ([]int64, error) {
 	if tn.token == "" || tn.chatID == "" {
 		slog.Debug("Telegram notification skipped: token or chat_id empty")
 		return nil, nil
@@ -242,7 +252,7 @@ func (tn *TelegramNotifier) SendMessageIDsWithMarkupToThread(ctx context.Context
 		if i == len(chunks)-1 {
 			msgMarkup = markup
 		}
-		msgID, err := tn.sendSingleMessage(ctx, chunk, msgMarkup, threadID)
+		msgID, err := tn.sendSingleMessage(ctx, chunk, msgMarkup, threadID, silent)
 		if err != nil {
 			return msgIDs, err
 		}
@@ -278,13 +288,14 @@ func extractRetryAfter(body []byte) int {
 	return 0
 }
 
-func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string, markup any, threadID int64) (int64, error) {
+func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string, markup any, threadID int64, silent bool) (int64, error) {
 	payload := tgSendMessagePayload{
-		ChatID:          tn.chatID,
-		MessageThreadID: threadID,
-		Text:            text,
-		ParseMode:       "HTML",
-		ReplyMarkup:     markup,
+		ChatID:              tn.chatID,
+		MessageThreadID:     threadID,
+		Text:                text,
+		ParseMode:           "HTML",
+		ReplyMarkup:         markup,
+		DisableNotification: silent,
 	}
 
 	data, err := json.Marshal(payload)
@@ -472,7 +483,7 @@ func (tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) er
 	c, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if sendErr := tn.SendMessage(c, msg); sendErr != nil {
+	if sendErr := tn.SendSilentMessage(c, msg); sendErr != nil {
 		slog.Error("Failed to send Telegram server error notification", "error", sendErr)
 		return sendErr
 	}
@@ -491,7 +502,7 @@ func (tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error {
 	c, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if sendErr := tn.SendMessage(c, msg); sendErr != nil {
+	if sendErr := tn.SendSilentMessage(c, msg); sendErr != nil {
 		slog.Error("Failed to send Telegram recovery notification", "error", sendErr)
 		return sendErr
 	}
@@ -1104,7 +1115,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 
 					if len(chunks) > 1 {
 						for _, chunk := range chunks[1:] {
-							mid, err := tn.sendSingleMessage(ctx, chunk, nil, targetThreadID)
+							mid, err := tn.sendSingleMessage(ctx, chunk, nil, targetThreadID, false)
 							if err != nil {
 								sendErr = err
 								break
