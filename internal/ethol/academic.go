@@ -8,40 +8,20 @@ import (
 	"time"
 )
 
-type scheduleCacheEntry struct {
-	items     []ScheduleItem
+type cacheEntry[T any] struct {
+	items     T
 	timestamp time.Time
 }
 
-type taskCacheEntry struct {
-	items     []TaskItem
-	timestamp time.Time
-}
-
-type materialCacheEntry struct {
-	items     []MaterialItem
-	timestamp time.Time
-}
-
-type videoCacheEntry struct {
-	items     []VideoItem
-	timestamp time.Time
-}
-
-type attendanceCacheEntry struct {
-	stats     *AttendanceStats
-	timestamp time.Time
-}
-
-type examCacheEntry struct {
-	items     []ExamItem
-	timestamp time.Time
-}
-
-type announcementCacheEntry struct {
-	items     []AnnouncementItem
-	timestamp time.Time
-}
+type (
+	scheduleCacheEntry     = cacheEntry[[]ScheduleItem]
+	taskCacheEntry         = cacheEntry[[]TaskItem]
+	materialCacheEntry     = cacheEntry[[]MaterialItem]
+	videoCacheEntry        = cacheEntry[[]VideoItem]
+	attendanceCacheEntry   = cacheEntry[*AttendanceStats]
+	examCacheEntry         = cacheEntry[[]ExamItem]
+	announcementCacheEntry = cacheEntry[[]AnnouncementItem]
+)
 
 type AcademicManager struct {
 	mu                  sync.RWMutex
@@ -99,37 +79,31 @@ func (am *AcademicManager) SweepExpired() {
 	am.sweepExpiredLocked(time.Now())
 }
 
+func sweepMap[K comparable, V any](m map[K]cacheEntry[V], ttl time.Duration, now time.Time) {
+	for k, e := range m {
+		if now.Sub(e.timestamp) >= ttl {
+			delete(m, k)
+		}
+	}
+}
+
+func countValid[K comparable, V any](m map[K]cacheEntry[V], ttl time.Duration, now time.Time) int {
+	n := 0
+	for _, e := range m {
+		if now.Sub(e.timestamp) < ttl {
+			n++
+		}
+	}
+	return n
+}
+
 func (am *AcademicManager) sweepExpiredLocked(now time.Time) {
-	for k, e := range am.scheduleCache {
-		if now.Sub(e.timestamp) >= am.ttl {
-			delete(am.scheduleCache, k)
-		}
-	}
-	for k, e := range am.taskCache {
-		if now.Sub(e.timestamp) >= am.ttl {
-			delete(am.taskCache, k)
-		}
-	}
-	for k, e := range am.materialCache {
-		if now.Sub(e.timestamp) >= am.ttl {
-			delete(am.materialCache, k)
-		}
-	}
-	for k, e := range am.videoCache {
-		if now.Sub(e.timestamp) >= am.ttl {
-			delete(am.videoCache, k)
-		}
-	}
-	for k, e := range am.attendanceCache {
-		if now.Sub(e.timestamp) >= am.ttl {
-			delete(am.attendanceCache, k)
-		}
-	}
-	for k, e := range am.examCache {
-		if now.Sub(e.timestamp) >= am.ttl {
-			delete(am.examCache, k)
-		}
-	}
+	sweepMap(am.scheduleCache, am.ttl, now)
+	sweepMap(am.taskCache, am.ttl, now)
+	sweepMap(am.materialCache, am.ttl, now)
+	sweepMap(am.videoCache, am.ttl, now)
+	sweepMap(am.attendanceCache, am.ttl, now)
+	sweepMap(am.examCache, am.ttl, now)
 	if !am.announcementCache.timestamp.IsZero() && now.Sub(am.announcementCache.timestamp) >= am.ttl {
 		am.announcementCache = announcementCacheEntry{}
 	}
@@ -151,53 +125,17 @@ func (am *AcademicManager) CacheStats() AcademicCacheStats {
 	defer am.mu.RUnlock()
 	now := time.Now()
 
-	schedCount := 0
-	for _, e := range am.scheduleCache {
-		if now.Sub(e.timestamp) < am.ttl {
-			schedCount++
-		}
-	}
-	taskCount := 0
-	for _, e := range am.taskCache {
-		if now.Sub(e.timestamp) < am.ttl {
-			taskCount++
-		}
-	}
-	matCount := 0
-	for _, e := range am.materialCache {
-		if now.Sub(e.timestamp) < am.ttl {
-			matCount++
-		}
-	}
-	vidCount := 0
-	for _, e := range am.videoCache {
-		if now.Sub(e.timestamp) < am.ttl {
-			vidCount++
-		}
-	}
-	attCount := 0
-	for _, e := range am.attendanceCache {
-		if now.Sub(e.timestamp) < am.ttl {
-			attCount++
-		}
-	}
-	examCount := 0
-	for _, e := range am.examCache {
-		if now.Sub(e.timestamp) < am.ttl {
-			examCount++
-		}
-	}
 	annCount := 0
 	if !am.announcementCache.timestamp.IsZero() && now.Sub(am.announcementCache.timestamp) < am.ttl {
 		annCount = len(am.announcementCache.items)
 	}
 	return AcademicCacheStats{
-		SchedulesCount:     schedCount,
-		TasksCount:         taskCount,
-		MaterialsCount:     matCount,
-		VideosCount:        vidCount,
-		AttendanceCount:    attCount,
-		ExamsCount:         examCount,
+		SchedulesCount:     countValid(am.scheduleCache, am.ttl, now),
+		TasksCount:         countValid(am.taskCache, am.ttl, now),
+		MaterialsCount:     countValid(am.materialCache, am.ttl, now),
+		VideosCount:        countValid(am.videoCache, am.ttl, now),
+		AttendanceCount:    countValid(am.attendanceCache, am.ttl, now),
+		ExamsCount:         countValid(am.examCache, am.ttl, now),
 		AnnouncementsCount: annCount,
 		ProcessedNotifs:    len(am.processedNotifIDs),
 	}

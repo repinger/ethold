@@ -460,7 +460,7 @@ func (am *AcademicManager) getAttendanceStatsAt(ctx context.Context, now time.Ti
 	key := fmt.Sprintf("%d-%d-%d-%s", tahun, semester, studentID, todayStr)
 	am.mu.RLock()
 	if entry, ok := am.attendanceCache[key]; ok && time.Since(entry.timestamp) < am.ttl {
-		stats := entry.stats
+		stats := entry.items
 		am.mu.RUnlock()
 		return stats, nil
 	}
@@ -549,7 +549,7 @@ courseLoop:
 	nowTime := time.Now()
 	am.sweepExpiredLocked(nowTime)
 	am.attendanceCache[key] = attendanceCacheEntry{
-		stats:     stats,
+		items:     stats,
 		timestamp: nowTime,
 	}
 	am.mu.Unlock()
