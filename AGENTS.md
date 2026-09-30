@@ -60,7 +60,7 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
 
 ## Conventions
 
-- Always load the `golang-patterns` skill before writing, refactoring, or reviewing Go code. Load `golang-concurrency` when handling concurrency, goroutines, or channels; load `golang-testing` when writing tests or benchmarks; load `golang-performance` when optimizing hot paths or profiling allocations; load `golang-error-handling` when designing error types, wrapping errors, or refactoring error paths; load `docker-patterns` when modifying `Dockerfile` or `docker-compose.yml`.
+- Always load the `golang-patterns` skill before writing, refactoring, or reviewing Go code. Load `golang-concurrency` when handling concurrency, goroutines, or channels; load `golang-testing` when writing tests or benchmarks; load `golang-performance` when optimizing hot paths or profiling allocations; load `golang-error-handling` when designing error types, wrapping errors, or refactoring error paths; load `docker-patterns` when modifying `Dockerfile` or `docker-compose.yml`; load `systematic-debugging` and `golang-troubleshooting` when diagnosing bugs, test failures, panics, races, or runtime anomalies.
 - Commit style: `subsystem: imperative summary` (max 50 chars)
   - Body: describe problem and technical solution in detail, wrapped at 72 columns
   - Commits MUST be small and bisectable: each commit is a single logical unit that compiles and passes tests independently; split refactors, features, and fixes across separate commits
