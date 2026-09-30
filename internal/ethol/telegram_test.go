@@ -307,7 +307,7 @@ func TestTelegramNotifier_SanitizeError(t *testing.T) {
 }
 
 func TestTelegramNotifier_RateLimiter_SpamSuppression(t *testing.T) {
-	var sentMessages []string
+	var sentPayloads []tgSendMessagePayload
 	var sentMu sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -329,7 +329,7 @@ func TestTelegramNotifier_RateLimiter_SpamSuppression(t *testing.T) {
 			var p tgSendMessagePayload
 			_ = json.NewDecoder(r.Body).Decode(&p)
 			sentMu.Lock()
-			sentMessages = append(sentMessages, p.Text)
+			sentPayloads = append(sentPayloads, p)
 			sentMu.Unlock()
 			w.Write([]byte(`{"ok":true}`))
 		default:
@@ -366,11 +366,19 @@ func TestTelegramNotifier_RateLimiter_SpamSuppression(t *testing.T) {
 	sentMu.Lock()
 	defer sentMu.Unlock()
 	// 3 replies + 1 rate-limit warning (subsequent rate-limited commands suppressed)
-	if len(sentMessages) != 4 {
-		t.Fatalf("expected 4 sent messages (3 replies + 1 warning), got %d: %v", len(sentMessages), sentMessages)
+	if len(sentPayloads) != 4 {
+		t.Fatalf("expected 4 sent messages (3 replies + 1 warning), got %d: %v", len(sentPayloads), sentPayloads)
 	}
-	if !strings.Contains(sentMessages[3], "Terlalu banyak perintah") {
-		t.Errorf("expected warning message at index 3, got %q", sentMessages[3])
+	for i := 0; i < 3; i++ {
+		if sentPayloads[i].DisableNotification {
+			t.Errorf("expected reply %d DisableNotification false, got true", i)
+		}
+	}
+	if !sentPayloads[3].DisableNotification {
+		t.Errorf("expected warning message DisableNotification true, got false")
+	}
+	if !strings.Contains(sentPayloads[3].Text, "Terlalu banyak perintah") {
+		t.Errorf("expected warning message at index 3, got %q", sentPayloads[3].Text)
 	}
 }
 
@@ -598,6 +606,9 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 		if !strings.Contains(sentPayload.Text, "10 entri (2 hari ini)") {
 			t.Errorf("expected records count, got: %s", sentPayload.Text)
 		}
+		if !sentPayload.DisableNotification {
+			t.Errorf("expected DisableNotification to be true for NotifyStartup")
+		}
 	})
 
 	t.Run("auto-presence with forum topics", func(t *testing.T) {
@@ -640,15 +651,17 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 
 	t.Run("notify starting and edit startup", func(t *testing.T) {
 		var (
-			sentMsgID   int64 = 555
-			editedID    int64
-			editedText  string
-			sendCalled  bool
-			editCalled  bool
+			sentMsgID       int64 = 555
+			editedID        int64
+			editedText      string
+			sendCalled      bool
+			editCalled      bool
+			startingPayload tgSendMessagePayload
 		)
 		sServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/bot123/sendMessage" {
 				sendCalled = true
+				_ = json.NewDecoder(r.Body).Decode(&startingPayload)
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"ok":     true,
 					"result": map[string]any{"message_id": sentMsgID},
@@ -682,6 +695,9 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 		}
 		if !sendCalled {
 			t.Error("expected sendMessage to be called")
+		}
+		if !startingPayload.DisableNotification {
+			t.Errorf("expected DisableNotification to be true for NotifyStarting")
 		}
 
 		// Now edit via NotifyStartup
@@ -1538,12 +1554,37 @@ func TestTelegramNotifier_ThreadRouting(t *testing.T) {
 		t.Errorf("expected MessageThreadID 200, got %d", sentPayload.MessageThreadID)
 	}
 
-	// SendMessageToThread can override thread
-	if err := tn.SendMessageToThread(context.Background(), "custom thread text", 555); err != nil {
-		t.Fatalf("SendMessageToThread failed: %v", err)
+	// SendMessageIDsWithMarkupToThread can override thread
+	if _, err := tn.SendMessageIDsWithMarkupToThread(context.Background(), "custom thread text", nil, 555); err != nil {
+		t.Fatalf("SendMessageIDsWithMarkupToThread failed: %v", err)
 	}
 	if sentPayload.MessageThreadID != 555 {
 		t.Errorf("expected MessageThreadID 555, got %d", sentPayload.MessageThreadID)
+	}
+
+	// SendSilentMessage should route to notifThreadID (200) with silent=true
+	if err := tn.SendSilentMessage(context.Background(), "silent text"); err != nil {
+		t.Fatalf("SendSilentMessage failed: %v", err)
+	}
+	if sentPayload.MessageThreadID != 200 || !sentPayload.DisableNotification {
+		t.Errorf("expected MessageThreadID 200 and silent=true, got thread=%d silent=%v", sentPayload.MessageThreadID, sentPayload.DisableNotification)
+	}
+
+	// SendSilentMessageIDs should route to notifThreadID with silent=true
+	ids, err := tn.SendSilentMessageIDs(context.Background(), "silent ids text")
+	if err != nil {
+		t.Fatalf("SendSilentMessageIDs failed: %v", err)
+	}
+	if len(ids) == 0 || sentPayload.MessageThreadID != 200 || !sentPayload.DisableNotification {
+		t.Errorf("expected IDs, MessageThreadID 200 and silent=true, got ids=%v thread=%d silent=%v", ids, sentPayload.MessageThreadID, sentPayload.DisableNotification)
+	}
+
+	// SendSilentMessageToThread can override thread with silent=true
+	if err := tn.SendSilentMessageToThread(context.Background(), "silent custom thread", 777); err != nil {
+		t.Fatalf("SendSilentMessageToThread failed: %v", err)
+	}
+	if sentPayload.MessageThreadID != 777 || !sentPayload.DisableNotification {
+		t.Errorf("expected MessageThreadID 777 and silent=true, got thread=%d silent=%v", sentPayload.MessageThreadID, sentPayload.DisableNotification)
 	}
 }
 

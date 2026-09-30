@@ -289,6 +289,8 @@ This file interfaces with the Telegram Bot API.
 - `NewTelegramNotifier(client, baseURL, token, chatID) *TelegramNotifier`: Creates the notifier.
 - `(tn *TelegramNotifier) SendMessage(ctx, text string) error`: Sends an HTML formatted message.
 - `(tn *TelegramNotifier) SendSilentMessage(ctx context.Context, text string) error`: Sends an HTML formatted message without notification sound (`disable_notification: true`).
+- `(tn *TelegramNotifier) SendSilentMessageIDs(ctx context.Context, text string) ([]int64, error)`: Sends formatted message chunks without notification sound and returns their message IDs.
+- `(tn *TelegramNotifier) SendSilentMessageToThread(ctx context.Context, text string, threadID int64) error`: Sends an HTML formatted message without notification sound to a specific topic thread.
 - `(tn *TelegramNotifier) SendMessageIDs(ctx context.Context, text string) ([]int64, error)`: Sends formatted message chunks and returns their message IDs.
 - `(tn *TelegramNotifier) SendMessageIDsWithMarkup(ctx context.Context, text string, markup any) ([]int64, error)`: Sends formatted message chunks with optional Telegram reply markup attached to the final chunk.
 - `(tn *TelegramNotifier) EditMessageText(ctx context.Context, messageID int64, text string, markup any) error`: Edits an existing message in-place using Telegram's `editMessageText` endpoint, maintaining inline keyboard buttons.
@@ -299,7 +301,8 @@ This file interfaces with the Telegram Bot API.
 - `(tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) error`: Sends silent server outage notification.
 - `(tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error`: Sends silent server recovery notification.
 - `(tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) error`: Sends authentication failure alert.
-- `(tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo) error`: Sends daemon boot status and operational metadata alert.
+- `(tn *TelegramNotifier) NotifyStarting(ctx context.Context, info StartupInfo) (int64, error)`: Sends silent preliminary boot announcement.
+- `(tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo) error`: Sends or edits daemon boot status and operational metadata alert silently.
 - `(tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler func(ctx context.Context, cmd string) string) (int64, error)`: Fetches single update batch from Telegram API.
 - `(tn *TelegramNotifier) StartCommandPoller(ctx, handler)`: Runs an update polling loop.
 

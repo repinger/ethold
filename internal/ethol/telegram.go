@@ -209,21 +209,21 @@ func (tn *TelegramNotifier) SendMessage(ctx context.Context, text string) error 
 }
 
 func (tn *TelegramNotifier) SendSilentMessage(ctx context.Context, text string) error {
-	_, err := tn.sendMessageIDsInternal(ctx, text, nil, tn.notifThreadID, true)
+	_, err := tn.SendSilentMessageIDs(ctx, text)
 	return err
 }
 
-func (tn *TelegramNotifier) SendMessageToThread(ctx context.Context, text string, threadID int64) error {
-	_, err := tn.SendMessageIDsToThread(ctx, text, threadID)
+func (tn *TelegramNotifier) SendSilentMessageIDs(ctx context.Context, text string) ([]int64, error) {
+	return tn.sendMessageIDsInternal(ctx, text, nil, tn.notifThreadID, true)
+}
+
+func (tn *TelegramNotifier) SendSilentMessageToThread(ctx context.Context, text string, threadID int64) error {
+	_, err := tn.sendMessageIDsInternal(ctx, text, nil, threadID, true)
 	return err
 }
 
 func (tn *TelegramNotifier) SendMessageIDs(ctx context.Context, text string) ([]int64, error) {
 	return tn.SendMessageIDsWithMarkupToThread(ctx, text, nil, tn.notifThreadID)
-}
-
-func (tn *TelegramNotifier) SendMessageIDsToThread(ctx context.Context, text string, threadID int64) ([]int64, error) {
-	return tn.SendMessageIDsWithMarkupToThread(ctx, text, nil, threadID)
 }
 
 func (tn *TelegramNotifier) SendMessageIDsWithMarkupToThread(ctx context.Context, text string, markup any, threadID int64) ([]int64, error) {
@@ -569,7 +569,7 @@ func (tn *TelegramNotifier) NotifyStarting(ctx context.Context, info StartupInfo
 	c, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	ids, sendErr := tn.SendMessageIDs(c, sb.String())
+	ids, sendErr := tn.SendSilentMessageIDs(c, sb.String())
 	if sendErr != nil {
 		slog.Error("Failed to send Telegram starting notification", "error", sendErr)
 		return 0, sendErr
@@ -629,7 +629,7 @@ func (tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo)
 		}
 	}
 
-	if sendErr := tn.SendMessage(c, sb.String()); sendErr != nil {
+	if sendErr := tn.SendSilentMessage(c, sb.String()); sendErr != nil {
 		slog.Error("Failed to send Telegram startup notification", "error", sendErr)
 		return sendErr
 	}
@@ -1029,7 +1029,7 @@ func (tn *TelegramNotifier) PollOnce(ctx context.Context, offset int64, handler 
 					}
 					ackCancel()
 				} else if warnAllowed {
-					_ = tn.SendMessageToThread(ctx, "⏳ <b>Terlalu banyak perintah.</b> Harap tunggu beberapa detik.", targetThreadID)
+					_ = tn.SendSilentMessageToThread(ctx, "⏳ <b>Terlalu banyak perintah.</b> Harap tunggu beberapa detik.", targetThreadID)
 				}
 				if userMsgID > 0 {
 					tn.deleteWg.Add(1)
