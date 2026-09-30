@@ -12,6 +12,10 @@ func TestStateManager(t *testing.T) {
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "attended_keys.json")
 
+	if _, err := NewStateManager(statePath, 10, 20); err == nil {
+		t.Fatal("expected error with multiple retentionDays, got nil")
+	}
+
 	sm, err := NewStateManager(statePath)
 	if err != nil {
 		t.Fatalf("new state manager: %v", err)

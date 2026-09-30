@@ -94,6 +94,10 @@ func resolveInt64(override int64, key string, fileEnv map[string]string) int64 {
 }
 
 func LoadConfig(path string, overrides ...Config) (*Config, error) {
+	if len(overrides) > 1 {
+		return nil, fmt.Errorf("at most one Config override allowed, got %d", len(overrides))
+	}
+
 	env := make(map[string]string)
 	if path != "" {
 		data, err := os.ReadFile(path)

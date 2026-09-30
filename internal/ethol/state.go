@@ -55,6 +55,10 @@ func parseRecordDate(key string, rec PresenceRecord) (time.Time, bool) {
 }
 
 func NewStateManager(path string, retentionDays ...int) (*StateManager, error) {
+	if len(retentionDays) > 1 {
+		return nil, fmt.Errorf("at most one retentionDays allowed, got %d", len(retentionDays))
+	}
+
 	retention := DefaultRetentionDays
 	if len(retentionDays) > 0 {
 		retention = retentionDays[0]

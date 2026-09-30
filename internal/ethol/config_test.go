@@ -170,6 +170,13 @@ func TestLoadConfigAutoPresence(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_TooManyOverrides(t *testing.T) {
+	_, err := LoadConfig("", Config{}, Config{})
+	if err == nil {
+		t.Fatal("expected error with multiple Config overrides, got nil")
+	}
+}
+
 func BenchmarkParseEnv(b *testing.B) {
 	// ponytail: static 15-line env fixture, add file loader benchmark when env size grows
 	raw := []byte(`# Configuration for ethold
