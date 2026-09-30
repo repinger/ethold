@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -84,7 +85,7 @@ func (cm *CourseManager) CachedCount() int {
 func (cm *CourseManager) CachedCourses() []Course {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.cache
+	return slices.Clone(cm.cache)
 }
 
 func (cm *CourseManager) CachedActivePeriod() (int, int, bool) {
@@ -108,7 +109,7 @@ func (cm *CourseManager) CacheAge() (time.Duration, bool) {
 func (cm *CourseManager) GetCourses(ctx context.Context) ([]Course, error) {
 	cm.mu.RLock()
 	if len(cm.cache) > 0 && time.Since(cm.lastUpdated) < cm.ttl {
-		courses := cm.cache
+		courses := slices.Clone(cm.cache)
 		cm.mu.RUnlock()
 		return courses, nil
 	}
@@ -124,7 +125,7 @@ func (cm *CourseManager) Refresh(ctx context.Context) ([]Course, error) {
 
 	cm.mu.RLock()
 	if len(cm.cache) > 0 && cm.lastUpdated.After(start) {
-		courses := cm.cache
+		courses := slices.Clone(cm.cache)
 		cm.mu.RUnlock()
 		return courses, nil
 	}
@@ -214,7 +215,7 @@ func (cm *CourseManager) refreshLocked(ctx context.Context) ([]Course, error) {
 	cm.mu.Unlock()
 
 	slog.Info("Course cache updated", "count", len(courses), "year", tahun, "semester", semester)
-	return courses, nil
+	return slices.Clone(courses), nil
 }
 
 func (cm *CourseManager) ActivePeriod(ctx context.Context) (int, int, error) {

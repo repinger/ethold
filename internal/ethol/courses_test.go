@@ -128,3 +128,32 @@ func TestCourseManager_Refresh_ConcurrentDeduplication(t *testing.T) {
 		t.Errorf("expected 1 network call due to deduplication, got %d", calls)
 	}
 }
+
+func TestCourseManager_CacheImmutability(t *testing.T) {
+	cm := &CourseManager{
+		cache: []Course{
+			{Nomor: 1, Matakuliah: "Original"},
+		},
+		lastUpdated: time.Now(),
+		ttl:         5 * time.Minute,
+	}
+
+	cached := cm.CachedCourses()
+	cached[0].Matakuliah = "Mutated"
+
+	again := cm.CachedCourses()
+	if again[0].Matakuliah != "Original" {
+		t.Errorf("CachedCourses returned aliased slice: got %v, want Original", again[0].Matakuliah)
+	}
+
+	got, err := cm.GetCourses(t.Context())
+	if err != nil {
+		t.Fatalf("GetCourses: %v", err)
+	}
+	got[0].Matakuliah = "MutatedAgain"
+
+	again2 := cm.CachedCourses()
+	if again2[0].Matakuliah != "Original" {
+		t.Errorf("GetCourses returned aliased slice: got %v, want Original", again2[0].Matakuliah)
+	}
+}
