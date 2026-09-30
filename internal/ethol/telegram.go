@@ -526,8 +526,47 @@ type StartupInfo struct {
 	WorkerCount  int
 	TotalRecords int
 	TodayRecords int
-	ScanInterval time.Duration
-	InScanWindow bool
+	ScanInterval  time.Duration
+	InScanWindow  bool
+	EditMessageID int64
+}
+
+func (tn *TelegramNotifier) NotifyStarting(ctx context.Context, info StartupInfo) (int64, error) {
+	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+
+	verStr := info.Version
+	if verStr == "" {
+		verStr = "dev"
+	}
+
+	setupTag := "[Direct Chat]"
+	if tn.commandThreadID != 0 || tn.notifThreadID != 0 {
+		setupTag = "[Forum Topics]"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("🔄 <b>ETHOLD BOT MEMULAI...</b>\n\n")
+	if info.AutoPresence {
+		sb.WriteString(fmt.Sprintf("⚙️ <b>Mode:</b> Auto-Presence (%d workers) %s\n", info.WorkerCount, setupTag))
+	} else {
+		sb.WriteString(fmt.Sprintf("⚙️ <b>Mode:</b> Akademik Saja (Presensi Manual) %s\n", setupTag))
+	}
+	sb.WriteString("🔗 <b>CAS SSO:</b> Menghubungkan...\n")
+	sb.WriteString(fmt.Sprintf("🏷️ <b>Versi:</b> <code>%s</code>\n", html.EscapeString(verStr)))
+	sb.WriteString(fmt.Sprintf("🕒 <b>Waktu:</b> %s\n", waktuStr))
+
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	ids, sendErr := tn.SendMessageIDs(c, sb.String())
+	if sendErr != nil {
+		slog.Error("Failed to send Telegram starting notification", "error", sendErr)
+		return 0, sendErr
+	}
+	if len(ids) > 0 {
+		return ids[0], nil
+	}
+	return 0, nil
 }
 
 func (tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo) error {
@@ -572,6 +611,12 @@ func (tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo)
 
 	c, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+
+	if info.EditMessageID > 0 {
+		if editErr := tn.EditMessageText(c, info.EditMessageID, sb.String(), nil); editErr == nil {
+			return nil
+		}
+	}
 
 	if sendErr := tn.SendMessage(c, sb.String()); sendErr != nil {
 		slog.Error("Failed to send Telegram startup notification", "error", sendErr)

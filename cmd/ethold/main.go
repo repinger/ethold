@@ -243,6 +243,9 @@ func run() error {
 
 	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
 		go func() {
+			if err := scanner.NotifyStarting(ctx, getVersion()); err != nil {
+				slog.Warn("Failed to send Telegram starting notification", "error", err)
+			}
 			select {
 			case <-ctx.Done():
 				return

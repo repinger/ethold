@@ -169,7 +169,8 @@ This file orchestrates scanning operations, concurrency, and daemon lifecycle.
 - `(s *Scanner) ScanCourses(ctx context.Context, courses []Course) (int, error)`: Scans a specific subset of courses.
 - `(s *Scanner) TryScanCourses(ctx context.Context, courses []Course) (int, bool, error)`: Non-blocking variant of `ScanCourses`.
 - `(s *Scanner) Status() ScannerStatus`: Returns a snapshot of current operational metrics.
-- `(s *Scanner) NotifyStartup(ctx context.Context, version string) error`: Sends daemon startup notification with runtime parameters to Telegram.
+- `(s *Scanner) NotifyStarting(ctx context.Context, version string) error`: Sends an immediate "bot starting" notification to Telegram before CAS SSO authentication completes.
+- `(s *Scanner) NotifyStartup(ctx context.Context, version string) error`: Sends daemon startup notification with runtime parameters to Telegram, editing the initial starting notification in-place when available.
 
 ---
 

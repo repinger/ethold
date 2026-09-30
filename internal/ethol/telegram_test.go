@@ -628,6 +628,74 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 			t.Errorf("expected default dev version, got: %s", sentPayload.Text)
 		}
 	})
+
+	t.Run("notify starting and edit startup", func(t *testing.T) {
+		var (
+			sentMsgID   int64 = 555
+			editedID    int64
+			editedText  string
+			sendCalled  bool
+			editCalled  bool
+		)
+		sServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/bot123/sendMessage" {
+				sendCalled = true
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"ok":     true,
+					"result": map[string]any{"message_id": sentMsgID},
+				})
+				return
+			}
+			if r.URL.Path == "/bot123/editMessageText" {
+				editCalled = true
+				var p tgEditMessagePayload
+				_ = json.NewDecoder(r.Body).Decode(&p)
+				editedID = p.MessageID
+				editedText = p.Text
+				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+				return
+			}
+			http.NotFound(w, r)
+		}))
+		defer sServer.Close()
+
+		sTn := NewTelegramNotifier(client, sServer.URL, "123", "777")
+		msgID, err := sTn.NotifyStarting(context.Background(), StartupInfo{
+			Version:      "v1.0.0",
+			AutoPresence: true,
+			WorkerCount:  2,
+		})
+		if err != nil {
+			t.Fatalf("NotifyStarting failed: %v", err)
+		}
+		if msgID != sentMsgID {
+			t.Errorf("expected msgID %d, got %d", sentMsgID, msgID)
+		}
+		if !sendCalled {
+			t.Error("expected sendMessage to be called")
+		}
+
+		// Now edit via NotifyStartup
+		err = sTn.NotifyStartup(context.Background(), StartupInfo{
+			Version:       "v1.0.0",
+			User:          &UserInfo{Nama: "Budi", NipNrp: "12345"},
+			AutoPresence:  true,
+			WorkerCount:   2,
+			EditMessageID: msgID,
+		})
+		if err != nil {
+			t.Fatalf("NotifyStartup edit failed: %v", err)
+		}
+		if !editCalled {
+			t.Error("expected editMessageText to be called")
+		}
+		if editedID != sentMsgID {
+			t.Errorf("expected edited ID %d, got %d", sentMsgID, editedID)
+		}
+		if !strings.Contains(editedText, "ETHOLD BOT AKTIF") {
+			t.Errorf("expected AKTIF in edited text, got: %s", editedText)
+		}
+	})
 }
 
 func TestTelegramNotifier_SendMessageIDs(t *testing.T) {

@@ -1147,6 +1147,68 @@ func TestScanner_NotifyStartup(t *testing.T) {
 	if err := nilScanner.NotifyStartup(context.Background(), "v1.0.0"); err != nil {
 		t.Errorf("expected nil error for nil notifier, got: %v", err)
 	}
+	if err := nilScanner.NotifyStarting(context.Background(), "v1.0.0"); err != nil {
+		t.Errorf("expected nil error for nil notifier starting, got: %v", err)
+	}
+}
+
+func TestScanner_NotifyStarting_And_Startup(t *testing.T) {
+	var (
+		sentID     int64 = 789
+		editedID   int64
+		editedText string
+		sendCalled bool
+		editCalled bool
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bottoken/sendMessage" {
+			sendCalled = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok":     true,
+				"result": map[string]any{"message_id": sentID},
+			})
+			return
+		}
+		if r.URL.Path == "/bottoken/editMessageText" {
+			editCalled = true
+			var p tgEditMessagePayload
+			_ = json.NewDecoder(r.Body).Decode(&p)
+			editedID = p.MessageID
+			editedText = p.Text
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	scanner := NewScanner(nil, nil, nil, nil, nil, notifier, 2)
+
+	if err := scanner.NotifyStarting(context.Background(), "v2.0.0"); err != nil {
+		t.Fatalf("NotifyStarting failed: %v", err)
+	}
+	if !sendCalled {
+		t.Error("expected sendMessage to be called")
+	}
+
+	if err := scanner.NotifyStartup(context.Background(), "v2.0.0"); err != nil {
+		t.Fatalf("NotifyStartup failed: %v", err)
+	}
+	if !editCalled {
+		t.Error("expected editMessageText to be called")
+	}
+	if editedID != sentID {
+		t.Errorf("expected edited ID %d, got %d", sentID, editedID)
+	}
+	if !strings.Contains(editedText, "ETHOLD BOT AKTIF") {
+		t.Errorf("expected AKTIF in edited text, got: %s", editedText)
+	}
 }
 
 func TestScanner_AuthReady_Run(t *testing.T) {

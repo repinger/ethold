@@ -70,6 +70,7 @@ type Scanner struct {
 	serverDown   atomic.Bool
 	authFailed   atomic.Bool
 	authReady    <-chan struct{}
+	startupMsgID atomic.Int64
 }
 
 func NewScanner(
@@ -192,20 +193,37 @@ func (s *Scanner) Status() ScannerStatus {
 	}
 }
 
+func (s *Scanner) NotifyStarting(ctx context.Context, version string) error {
+	if s.notifier == nil {
+		return nil
+	}
+	status := s.Status()
+	msgID, err := s.notifier.NotifyStarting(ctx, StartupInfo{
+		Version:      version,
+		AutoPresence: s.presence != nil,
+		WorkerCount:  status.WorkerCount,
+	})
+	if err == nil && msgID > 0 {
+		s.startupMsgID.Store(msgID)
+	}
+	return err
+}
+
 func (s *Scanner) NotifyStartup(ctx context.Context, version string) error {
 	if s.notifier == nil {
 		return nil
 	}
 	status := s.Status()
 	return s.notifier.NotifyStartup(ctx, StartupInfo{
-		Version:      version,
-		User:         status.User,
-		AutoPresence: s.presence != nil,
-		WorkerCount:  status.WorkerCount,
-		TotalRecords: status.TotalAttended,
-		TodayRecords: status.TodayAttended,
-		ScanInterval: status.ScanPlan.Interval,
-		InScanWindow: status.ScanPlan.InWindow,
+		Version:       version,
+		User:          status.User,
+		AutoPresence:  s.presence != nil,
+		WorkerCount:   status.WorkerCount,
+		TotalRecords:  status.TotalAttended,
+		TodayRecords:  status.TodayAttended,
+		ScanInterval:  status.ScanPlan.Interval,
+		InScanWindow:  status.ScanPlan.InWindow,
+		EditMessageID: s.startupMsgID.Load(),
 	})
 }
 
