@@ -164,30 +164,32 @@ func run() error {
 		slog.Info("Auto-presence disabled, running in academic-only mode")
 	}
 
-	// Initial authentication with exponential backoff
+	scanner := ethol.NewScanner(auth, courses, presence, academic, state, notifier, *concurrency)
+	authReady := make(chan struct{})
+	scanner.SetAuthReady(authReady)
+
+	// Initial authentication with exponential backoff in background
 	// ponytail: fixed backoff params (5s base, 2m cap). upgrade path: make configurable via env if needed.
-	{
+	go func() {
 		delay := 5 * time.Second
 		const maxDelay = 2 * time.Minute
 		for attempt := 1; ; attempt++ {
 			if _, err := auth.Login(ctx); err == nil {
-				break
-			} else {
-				slog.Error("Initial CAS SSO login failed, retrying", "error", err, "attempt", attempt, "retry_in", delay)
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(delay):
-				}
-				delay *= 2
-				if delay > maxDelay {
-					delay = maxDelay
-				}
+				close(authReady)
+				return
+			}
+			slog.Error("Initial CAS SSO login failed, retrying", "error", err, "attempt", attempt, "retry_in", delay)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+			delay *= 2
+			if delay > maxDelay {
+				delay = maxDelay
 			}
 		}
-	}
-
-	scanner := ethol.NewScanner(auth, courses, presence, academic, state, notifier, *concurrency)
+	}()
 
 	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
 		if cfg.AutoPresence {
@@ -206,15 +208,22 @@ func run() error {
 			})
 		}
 		go notifier.StartCommandPoller(ctx, scanner.HandleTelegramCommand)
-		go academic.StartNotificationPoller(ctx, 30*time.Second, auth.EnsureSession, nil, func(ket string) {
-			_ = notifier.SendMessage(ctx, fmt.Sprintf("📝 <b>NOTIFIKASI TUGAS BARU:</b>\n%s", html.EscapeString(ket)))
-		}, func(kode, ket string) {
-			title := "NOTIFIKASI ETHOL"
-			if k := strings.TrimSpace(kode); k != "" {
-				title = fmt.Sprintf("NOTIFIKASI %s", html.EscapeString(k))
+		go func() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-authReady:
 			}
-			_ = notifier.SendMessage(ctx, fmt.Sprintf("🔔 <b>%s:</b>\n%s", title, html.EscapeString(ket)))
-		})
+			academic.StartNotificationPoller(ctx, 30*time.Second, auth.EnsureSession, nil, func(ket string) {
+				_ = notifier.SendMessage(ctx, fmt.Sprintf("📝 <b>NOTIFIKASI TUGAS BARU:</b>\n%s", html.EscapeString(ket)))
+			}, func(kode, ket string) {
+				title := "NOTIFIKASI ETHOL"
+				if k := strings.TrimSpace(kode); k != "" {
+					title = fmt.Sprintf("NOTIFIKASI %s", html.EscapeString(k))
+				}
+				_ = notifier.SendMessage(ctx, fmt.Sprintf("🔔 <b>%s:</b>\n%s", title, html.EscapeString(ket)))
+			})
+		}()
 	}
 
 	if *once {
@@ -234,6 +243,11 @@ func run() error {
 
 	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
 		go func() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-authReady:
+			}
 			if err := scanner.NotifyStartup(ctx, getVersion()); err != nil {
 				slog.Warn("Failed to send Telegram startup notification", "error", err)
 			}

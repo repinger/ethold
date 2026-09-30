@@ -653,3 +653,59 @@ func TestScanner_Roster_Cache(t *testing.T) {
 		t.Errorf("expected identical cached reply, got %q vs %q", reply1, reply2)
 	}
 }
+
+func TestScanner_AuthReady_Commands(t *testing.T) {
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewStateManager(filepath.Join(t.TempDir(), "keys.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := NewAuthManager(client, "http://127.0.0.1:9999", "user", "pass")
+	courses := NewCourseManager(client, "http://127.0.0.1:9999", 10*time.Minute)
+	presence := NewPresenceEngine(client, "http://127.0.0.1:9999")
+	notifier := NewTelegramNotifier(client, "http://127.0.0.1:9999", "token", "123")
+	scanner := NewScanner(auth, courses, presence, nil, state, notifier, 1)
+
+	authReady := make(chan struct{})
+	scanner.SetAuthReady(authReady)
+
+	if scanner.isAuthReady() {
+		t.Fatal("expected isAuthReady to be false before channel close")
+	}
+
+	ctx := context.Background()
+
+	// Non-auth commands work immediately
+	if reply := scanner.HandleTelegramCommand(ctx, "/ping"); reply != "🏓 Pong!" {
+		t.Fatalf("expected pong, got %s", reply)
+	}
+	if reply := scanner.HandleTelegramCommand(ctx, "/status"); !strings.Contains(reply, "⏳ Menghubungkan ke CAS SSO...") {
+		t.Fatalf("expected status to show connecting message, got %s", reply)
+	}
+	if reply := scanner.HandleTelegramCommand(ctx, "/today"); !strings.Contains(reply, "Presensi Hari Ini") {
+		t.Fatalf("expected today to work, got %s", reply)
+	}
+
+	// TryScanOnce fails fast
+	if _, _, err := scanner.TryScanOnce(ctx); err == nil || !strings.Contains(err.Error(), "menunggu koneksi ke CAS SSO") {
+		t.Fatalf("expected scan failure with waiting message, got %v", err)
+	}
+
+	// Auth commands return waiting message
+	authCmds := []string{"/whoami", "/courses", "/check", "/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/presensi_kelas", "/rekap", "/relogin"}
+	for _, cmd := range authCmds {
+		reply := scanner.HandleTelegramCommand(ctx, cmd)
+		if !strings.Contains(reply, "Sedang Menghubungkan ke CAS SSO") {
+			t.Fatalf("expected %s to return waiting message, got %s", cmd, reply)
+		}
+	}
+
+	// Once auth is ready, isAuthReady becomes true
+	close(authReady)
+	if !scanner.isAuthReady() {
+		t.Fatal("expected isAuthReady to be true after channel close")
+	}
+}

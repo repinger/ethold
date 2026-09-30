@@ -69,6 +69,7 @@ type Scanner struct {
 	cmdState     commandState
 	serverDown   atomic.Bool
 	authFailed   atomic.Bool
+	authReady    <-chan struct{}
 }
 
 func NewScanner(
@@ -96,6 +97,34 @@ func NewScanner(
 		maxDelay:   10 * time.Second,
 		minStagger: 50 * time.Millisecond,
 		maxStagger: 250 * time.Millisecond,
+	}
+}
+
+func (s *Scanner) SetAuthReady(ready <-chan struct{}) {
+	s.authReady = ready
+}
+
+func (s *Scanner) isAuthReady() bool {
+	if s.authReady == nil {
+		return true
+	}
+	select {
+	case <-s.authReady:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Scanner) waitAuthReady(ctx context.Context) error {
+	if s.authReady == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.authReady:
+		return nil
 	}
 }
 
@@ -275,6 +304,9 @@ func (s *Scanner) TryScanCourses(ctx context.Context, targetCourses []Course) (i
 	if s.presence == nil {
 		return 0, false, errors.New("auto-presence is disabled")
 	}
+	if !s.isAuthReady() {
+		return 0, false, errors.New("menunggu koneksi ke CAS SSO")
+	}
 
 	if !s.scanMu.TryLock() {
 		return 0, true, nil
@@ -298,6 +330,9 @@ func (s *Scanner) TryScanCourses(ctx context.Context, targetCourses []Course) (i
 func (s *Scanner) ScanCourses(ctx context.Context, targetCourses []Course) (int, error) {
 	if s.presence == nil {
 		return 0, errors.New("auto-presence is disabled")
+	}
+	if err := s.waitAuthReady(ctx); err != nil {
+		return 0, err
 	}
 
 	s.scanMu.Lock()
@@ -553,6 +588,10 @@ func (s *Scanner) Run(ctx context.Context) error {
 		slog.Info("Auto-presence daemon loop disabled")
 		<-ctx.Done()
 		return nil
+	}
+
+	if err := s.waitAuthReady(ctx); err != nil {
+		return nil //nolint:nilerr // daemon shutdown via context cancellation returns nil
 	}
 
 	slog.Info("Starting auto-presence daemon loop")

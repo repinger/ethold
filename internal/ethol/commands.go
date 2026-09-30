@@ -12,6 +12,13 @@ import (
 func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string {
 	devLog("Handling Telegram command", "cmd", cmd)
 	switch cmd {
+	case "/whoami", "/courses", "/check", "/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/presensi_kelas", "/rekap", "/relogin":
+		if !s.isAuthReady() {
+			return "⏳ <b>Sedang Menghubungkan ke CAS SSO...</b>\nBot sedang mencoba login ke CAS SSO. Harap tunggu hingga terhubung."
+		}
+	}
+
+	switch cmd {
 	case "/ping":
 		return "🏓 Pong!"
 
@@ -62,7 +69,9 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		uptime := time.Since(status.StartTime).Truncate(time.Second)
 
 		userStr := "Belum login"
-		if status.User != nil {
+		if !s.isAuthReady() {
+			userStr = "⏳ Menghubungkan ke CAS SSO..."
+		} else if status.User != nil {
 			userStr = fmt.Sprintf("%s (%s)", html.EscapeString(status.User.Nama), html.EscapeString(status.User.NipNrp))
 		}
 

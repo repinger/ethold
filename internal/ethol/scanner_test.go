@@ -1149,3 +1149,47 @@ func TestScanner_NotifyStartup(t *testing.T) {
 	}
 }
 
+func TestScanner_AuthReady_Run(t *testing.T) {
+	scanner := NewScanner(nil, nil, &PresenceEngine{}, nil, nil, nil, 1)
+	authReady := make(chan struct{})
+	scanner.SetAuthReady(authReady)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- scanner.Run(ctx)
+	}()
+
+	// Verify Run is blocked waiting for authReady
+	select {
+	case err := <-done:
+		t.Fatalf("Run exited prematurely: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Cancel context; Run should exit cleanly with nil error
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("expected nil error on ctx cancel, got: %v", err)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("Run timed out after context cancellation")
+	}
+}
+
+func TestScanner_AuthReady_ScanCourses(t *testing.T) {
+	scanner := NewScanner(nil, nil, &PresenceEngine{}, nil, nil, nil, 1)
+	authReady := make(chan struct{})
+	scanner.SetAuthReady(authReady)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := scanner.ScanCourses(ctx, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got: %v", err)
+	}
+}
+

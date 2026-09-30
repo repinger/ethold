@@ -83,7 +83,13 @@ This completes the login process.
 
 ### Startup Retry
 
-At daemon startup, initial authentication retries indefinitely on failure using exponential backoff (starting at 5 seconds, doubling up to a 2-minute cap) until authentication succeeds or the process context is cancelled.
+At daemon startup, initial authentication runs in the background and retries indefinitely on failure using exponential backoff (starting at 5 seconds, doubling up to a 2-minute cap) until authentication succeeds or the process context is cancelled.
+
+Startup is non-blocking:
+- The Telegram command poller starts immediately so the bot responds to commands without freezing.
+- Non-auth commands (`/ping`, `/help`, `/status`, `/today`, `/pause`, `/resume`, `/debug`) are immediately responsive.
+- Commands requiring an ETHOL session return a friendly waiting message (`⏳ Sedang Menghubungkan ke CAS SSO...`) until authentication completes.
+- The auto-presence scan loop and academic notification poller wait for initial authentication readiness before beginning their cycles.
 
 ## Session Maintenance
 
