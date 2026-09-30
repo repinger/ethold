@@ -164,10 +164,27 @@ func run() error {
 		slog.Info("Auto-presence disabled, running in academic-only mode")
 	}
 
-	// Initial authentication test
-	if _, err := auth.Login(ctx); err != nil {
-		slog.Error("Initial CAS SSO login failed", "error", err)
-		return err
+	// Initial authentication with exponential backoff
+	// ponytail: fixed backoff params (5s base, 2m cap). upgrade path: make configurable via env if needed.
+	{
+		delay := 5 * time.Second
+		const maxDelay = 2 * time.Minute
+		for attempt := 1; ; attempt++ {
+			if _, err := auth.Login(ctx); err == nil {
+				break
+			} else {
+				slog.Error("Initial CAS SSO login failed, retrying", "error", err, "attempt", attempt, "retry_in", delay)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(delay):
+				}
+				delay *= 2
+				if delay > maxDelay {
+					delay = maxDelay
+				}
+			}
+		}
 	}
 
 	scanner := ethol.NewScanner(auth, courses, presence, academic, state, notifier, *concurrency)

@@ -81,6 +81,10 @@ The server responds with a JSON object that contains user information:
 The client decodes this object into a `UserInfo` struct.
 This completes the login process.
 
+### Startup Retry
+
+At daemon startup, initial authentication retries indefinitely on failure using exponential backoff (starting at 5 seconds, doubling up to a 2-minute cap) until authentication succeeds or the process context is cancelled.
+
 ## Session Maintenance
 
 The application keeps sessions active without a full login when possible.
