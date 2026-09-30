@@ -288,6 +288,52 @@ func extractRetryAfter(body []byte) int {
 	return 0
 }
 
+func (tn *TelegramNotifier) callWithRetry(ctx context.Context, endpoint string, data []byte, action string) (int, []byte, error) {
+	client := tn.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+		if err != nil {
+			return 0, nil, tn.sanitizeError(fmt.Errorf("create %s req: %w", action, err))
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return 0, nil, tn.sanitizeError(fmt.Errorf("send %s request: %w", action, err))
+		}
+
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			return http.StatusOK, respBody, nil
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
+			waitSec := extractRetryAfter(respBody)
+			if waitSec <= 0 || waitSec > 5 {
+				waitSec = 1
+			}
+			timer := time.NewTimer(time.Duration(waitSec) * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return 0, nil, ctx.Err()
+			case <-timer.C:
+				continue
+			}
+		}
+
+		return resp.StatusCode, respBody, nil
+	}
+
+	return http.StatusTooManyRequests, nil, nil
+}
+
 func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string, markup any, threadID int64, silent bool) (int64, error) {
 	payload := tgSendMessagePayload{
 		ChatID:              tn.chatID,
@@ -304,61 +350,26 @@ func (tn *TelegramNotifier) sendSingleMessage(ctx context.Context, text string, 
 	}
 
 	endpoint := fmt.Sprintf("%s/bot%s/sendMessage", tn.baseURL, tn.token)
-
-	client := tn.client
-	if client == nil {
-		client = http.DefaultClient
+	status, respBody, err := tn.callWithRetry(ctx, endpoint, data, "telegram")
+	if err != nil {
+		return 0, err
+	}
+	if status == http.StatusOK {
+		var sr tgSendResponse
+		if err := json.Unmarshal(respBody, &sr); err != nil {
+			return 0, tn.sanitizeError(fmt.Errorf("decode sendMessage response: %w", err))
+		}
+		if sr.Result != nil {
+			return sr.Result.MessageID, nil
+		}
+		return 0, nil
 	}
 
-	for attempt := 0; attempt < 2; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
-		if err != nil {
-			return 0, tn.sanitizeError(fmt.Errorf("create telegram req: %w", err))
-		}
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return 0, tn.sanitizeError(fmt.Errorf("send telegram request: %w", err))
-		}
-
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		resp.Body.Close()
-
-		if resp.StatusCode == http.StatusOK {
-			var sr tgSendResponse
-			if err := json.Unmarshal(respBody, &sr); err != nil {
-				return 0, tn.sanitizeError(fmt.Errorf("decode sendMessage response: %w", err))
-			}
-			if sr.Result != nil {
-				return sr.Result.MessageID, nil
-			}
-			return 0, nil
-		}
-
-		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
-			waitSec := extractRetryAfter(respBody)
-			if waitSec <= 0 || waitSec > 5 {
-				waitSec = 1
-			}
-			timer := time.NewTimer(time.Duration(waitSec) * time.Second)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return 0, ctx.Err()
-			case <-timer.C:
-				continue
-			}
-		}
-
-		errText := strings.TrimSpace(string(respBody))
-		if errText != "" {
-			return 0, tn.sanitizeError(fmt.Errorf("telegram api error: HTTP %d: %s", resp.StatusCode, errText))
-		}
-		return 0, fmt.Errorf("telegram api error: HTTP %d", resp.StatusCode)
+	errText := strings.TrimSpace(string(respBody))
+	if errText != "" {
+		return 0, tn.sanitizeError(fmt.Errorf("telegram api error: HTTP %d: %s", status, errText))
 	}
-
-	return 0, fmt.Errorf("telegram api error: rate limit exceeded")
+	return 0, fmt.Errorf("telegram api error: HTTP %d", status)
 }
 
 type tgEditMessagePayload struct {
@@ -388,58 +399,22 @@ func (tn *TelegramNotifier) EditMessageText(ctx context.Context, messageID int64
 	}
 
 	endpoint := fmt.Sprintf("%s/bot%s/editMessageText", tn.baseURL, tn.token)
-
-	client := tn.client
-	if client == nil {
-		client = http.DefaultClient
+	status, respBody, err := tn.callWithRetry(ctx, endpoint, data, "editMessageText")
+	if err != nil {
+		return err
+	}
+	if status == http.StatusOK {
+		return nil
 	}
 
-	for attempt := 0; attempt < 2; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
-		if err != nil {
-			return tn.sanitizeError(fmt.Errorf("create editMessageText req: %w", err))
-		}
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return tn.sanitizeError(fmt.Errorf("send editMessageText request: %w", err))
-		}
-
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		resp.Body.Close()
-
-		if resp.StatusCode == http.StatusOK {
-			return nil
-		}
-
-		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
-			waitSec := extractRetryAfter(respBody)
-			if waitSec <= 0 || waitSec > 5 {
-				waitSec = 1
-			}
-			timer := time.NewTimer(time.Duration(waitSec) * time.Second)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			case <-timer.C:
-				continue
-			}
-		}
-
-		errText := strings.TrimSpace(string(respBody))
-		if strings.Contains(errText, "message is not modified") {
-			return nil
-		}
-
-		if errText != "" {
-			return tn.sanitizeError(fmt.Errorf("telegram editMessageText api error: HTTP %d: %s", resp.StatusCode, errText))
-		}
-		return fmt.Errorf("telegram editMessageText api error: HTTP %d", resp.StatusCode)
+	errText := strings.TrimSpace(string(respBody))
+	if strings.Contains(errText, "message is not modified") {
+		return nil
 	}
-
-	return fmt.Errorf("telegram editMessageText api error: rate limit exceeded")
+	if errText != "" {
+		return tn.sanitizeError(fmt.Errorf("telegram editMessageText api error: HTTP %d: %s", status, errText))
+	}
+	return fmt.Errorf("telegram editMessageText api error: HTTP %d", status)
 }
 
 func (tn *TelegramNotifier) NotifyPresenceSuccess(ctx context.Context, mkName, dosen, key, respMsg string) error {
