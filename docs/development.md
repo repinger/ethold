@@ -7,6 +7,7 @@ This document describes how to develop, test, and contribute to the project.
 You must install these tools on your development computer:
 - Go version 1.27 or higher.
 - Git.
+- Node.js version 18 or higher with `npx` (optional, to manage AI agent skills).
 
 ## Project Structure
 
@@ -101,6 +102,17 @@ go test -run='^$' -bench=. -benchmem ./internal/ethol
 Run a specific benchmark:
 ```bash
 go test -run='^$' -bench=BenchmarkParseEnv -benchmem ./internal/ethol
+```
+
+## Agent Skills
+
+The project uses agent skills for AI coding tools.
+Git does not track the `.agents/` directory.
+The `skills-lock.json` file records all pinned skills and their checksums.
+
+Run this command to restore skills on a clean checkout:
+```bash
+npx skills experimental_install
 ```
 
 ## Coding Conventions

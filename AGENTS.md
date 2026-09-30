@@ -19,6 +19,12 @@ go run golang.org/x/tools/cmd/deadcode@latest ./...        # dead code analysis
 go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./... # dev build dead code analysis
 ```
 
+### Skills
+
+```bash
+npx skills experimental_install                            # restore skills from skills-lock.json
+```
+
 Linter config at `.golangci.yml`. Tests use `t.TempDir()` for isolation; no external services or fixtures required.
 
 CI runs both default and `-tags dev` builds for tests, lint, and `go build`. Always verify both.
@@ -54,6 +60,7 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
 
 ## Conventions
 
+- Always load the `golang-patterns` skill before writing, refactoring, or reviewing Go code. Load `golang-concurrency` when handling concurrency, goroutines, or channels; load `golang-testing` when writing tests or benchmarks; load `golang-performance` when optimizing hot paths or profiling allocations; load `golang-error-handling` when designing error types, wrapping errors, or refactoring error paths; load `docker-patterns` when modifying `Dockerfile` or `docker-compose.yml`.
 - Commit style: `subsystem: imperative summary` (max 50 chars)
   - Body: describe problem and technical solution in detail, wrapped at 72 columns
   - Commits MUST be small and bisectable: each commit is a single logical unit that compiles and passes tests independently; split refactors, features, and fixes across separate commits
@@ -77,7 +84,7 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
   - Additional CLI flags: `-config` (`.env` path), `-state` (state file path), `-once` (single scan pass), `-concurrency` (worker count, default 4), `-verbose`, `-version`
 - State persisted as atomic JSON writes to `attended_keys.json`
 - Docker: `docker compose up -d` (volume for state persistence at `/app/data/`)
-- Documentation maintenance: when modifying code that affects behavior, APIs, CLI flags, Telegram commands, configuration, or architecture described in `docs/`, update the affected documentation files in the same PR/commit series.
+- Documentation maintenance: when modifying code that affects behavior, APIs, CLI flags, Telegram commands, configuration, or architecture described in `docs/`, update the affected documentation files in the same PR/commit series. Load `asd-ste100` skill when writing or editing technical documentation for clarity and unambiguous specification.
 
 ## Gotchas
 
