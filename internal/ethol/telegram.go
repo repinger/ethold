@@ -140,7 +140,10 @@ func (tn *TelegramNotifier) SetInlineKeyboard(buttons [][]InlineButton) {
 	}
 }
 
-const maxTelegramMessageLen = 4000
+const (
+	maxTelegramMessageLen = 4000
+	wibTimestampLayout    = "02-01-2006 15:04:05 WIB"
+)
 
 func (tn *TelegramNotifier) sanitizeError(err error) error {
 	if err == nil || tn.token == "" {
@@ -418,7 +421,7 @@ func (tn *TelegramNotifier) EditMessageText(ctx context.Context, messageID int64
 }
 
 func (tn *TelegramNotifier) NotifyPresenceSuccess(ctx context.Context, mkName, dosen, key, respMsg string) error {
-	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	waktuStr := NowWIB().Format(wibTimestampLayout)
 	msg := fmt.Sprintf(
 		"🎉 <b>PRESENSI BERHASIL DICATAT!</b>\n\n"+
 			"📚 <b>Mata Kuliah:</b> %s\n"+
@@ -445,7 +448,7 @@ func (tn *TelegramNotifier) NotifyPresenceSuccess(ctx context.Context, mkName, d
 }
 
 func (tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) error {
-	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	waktuStr := NowWIB().Format(wibTimestampLayout)
 	msg := fmt.Sprintf(
 		"⚠️ <b>GANGGUAN SERVER ETHOL</b>\n\n"+
 			"🕒 <b>Waktu:</b> %s\n"+
@@ -466,7 +469,7 @@ func (tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) er
 }
 
 func (tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error {
-	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	waktuStr := NowWIB().Format(wibTimestampLayout)
 	msg := fmt.Sprintf(
 		"✅ <b>LAYANAN ETHOL PULIH</b>\n\n"+
 			"🕒 <b>Waktu:</b> %s\n"+
@@ -485,7 +488,7 @@ func (tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error {
 }
 
 func (tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) error {
-	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	waktuStr := NowWIB().Format(wibTimestampLayout)
 	msg := fmt.Sprintf(
 		"🚨 <b>GAGAL AUTENTIKASI</b>\n\n"+
 			"🕒 <b>Waktu:</b> %s\n"+
@@ -518,7 +521,7 @@ type StartupInfo struct {
 }
 
 func (tn *TelegramNotifier) NotifyStarting(ctx context.Context, info StartupInfo) (int64, error) {
-	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	waktuStr := NowWIB().Format(wibTimestampLayout)
 
 	verStr := info.Version
 	if verStr == "" {
@@ -556,7 +559,7 @@ func (tn *TelegramNotifier) NotifyStarting(ctx context.Context, info StartupInfo
 }
 
 func (tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo) error {
-	waktuStr := NowWIB().Format("02-01-2006 15:04:05 WIB")
+	waktuStr := NowWIB().Format(wibTimestampLayout)
 
 	userStr := "Tidak diketahui"
 	if info.User != nil {
