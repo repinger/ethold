@@ -634,10 +634,14 @@ func TestScannerAutoPresenceDisabled(t *testing.T) {
 		t.Errorf("expected status to show inactive auto-presence, got: %s", statusReply)
 	}
 
-	// ScanOnce should return an error
+	// ScanOnce and TryScanOnce should return ErrAutoPresenceDisabled
 	_, scanErr := scanner.ScanOnce(ctx)
-	if scanErr == nil {
-		t.Errorf("expected ScanOnce to fail when presence is disabled, got nil")
+	if !errors.Is(scanErr, ErrAutoPresenceDisabled) {
+		t.Errorf("expected ErrAutoPresenceDisabled, got %v", scanErr)
+	}
+	_, _, tryErr := scanner.TryScanOnce(ctx)
+	if !errors.Is(tryErr, ErrAutoPresenceDisabled) {
+		t.Errorf("expected ErrAutoPresenceDisabled on TryScanOnce, got %v", tryErr)
 	}
 
 	// Run should exit cleanly when context is cancelled

@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+var ErrAutoPresenceDisabled = errors.New("auto-presence is disabled")
+
 type ScannerStatus struct {
 	StartTime        time.Time
 	LastScanTime     time.Time
@@ -320,7 +322,7 @@ func (s *Scanner) TryScanOnce(ctx context.Context) (int, bool, error) {
 
 func (s *Scanner) TryScanCourses(ctx context.Context, targetCourses []Course) (int, bool, error) {
 	if s.presence == nil {
-		return 0, false, errors.New("auto-presence is disabled")
+		return 0, false, ErrAutoPresenceDisabled
 	}
 	if !s.isAuthReady() {
 		return 0, false, errors.New("menunggu koneksi ke CAS SSO")
@@ -347,7 +349,7 @@ func (s *Scanner) TryScanCourses(ctx context.Context, targetCourses []Course) (i
 
 func (s *Scanner) ScanCourses(ctx context.Context, targetCourses []Course) (int, error) {
 	if s.presence == nil {
-		return 0, errors.New("auto-presence is disabled")
+		return 0, ErrAutoPresenceDisabled
 	}
 	if err := s.waitAuthReady(ctx); err != nil {
 		return 0, err
