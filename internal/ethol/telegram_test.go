@@ -3,6 +3,7 @@ package ethol
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -296,13 +297,23 @@ func TestTelegramNotifier_SanitizeError(t *testing.T) {
 	token := "my-super-secret-token"
 	tn := NewTelegramNotifier(nil, "", token, "123")
 
-	rawErr := fmt.Errorf("request to https://api.telegram.org/bot%s/getUpdates failed", token)
+	baseErr := errors.New("underlying network issue")
+	rawErr := fmt.Errorf("request to https://api.telegram.org/bot%s/getUpdates failed: %w", token, baseErr)
 	sanitized := tn.sanitizeError(rawErr)
 	if strings.Contains(sanitized.Error(), token) {
 		t.Errorf("token leaked in sanitized error: %v", sanitized)
 	}
 	if !strings.Contains(sanitized.Error(), "[REDACTED]") {
 		t.Errorf("expected [REDACTED] in sanitized error: %v", sanitized)
+	}
+	if !errors.Is(sanitized, baseErr) {
+		t.Errorf("errors.Is broke across sanitizeError: expected baseErr, got %v", sanitized)
+	}
+
+	// Unchanged error should return unchanged
+	plainErr := errors.New("plain error without token")
+	if got := tn.sanitizeError(plainErr); !errors.Is(got, plainErr) {
+		t.Errorf("expected plainErr returned when token not present")
 	}
 }
 

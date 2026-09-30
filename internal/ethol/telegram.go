@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -145,11 +144,29 @@ const (
 	wibTimestampLayout    = "02-01-2006 15:04:05 WIB"
 )
 
+type sanitizedErr struct {
+	msg string
+	err error
+}
+
+func (e *sanitizedErr) Error() string {
+	return e.msg
+}
+
+func (e *sanitizedErr) Unwrap() error {
+	return e.err
+}
+
 func (tn *TelegramNotifier) sanitizeError(err error) error {
 	if err == nil || tn.token == "" {
 		return err
 	}
-	return errors.New(strings.ReplaceAll(err.Error(), tn.token, "[REDACTED]"))
+	raw := err.Error()
+	sanitized := strings.ReplaceAll(raw, tn.token, "[REDACTED]")
+	if sanitized == raw {
+		return err
+	}
+	return &sanitizedErr{msg: sanitized, err: err}
 }
 
 // ponytail: splits plain lines by newline boundary. upgrade path: html entity aware tree splitting if rich markup spans lines.
