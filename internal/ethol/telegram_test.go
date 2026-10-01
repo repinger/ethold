@@ -179,6 +179,11 @@ func TestTelegramNotifier_ParseCommand(t *testing.T) {
 		{"help", "/help"},
 		{"start", "/start"},
 		// Negative / unknown
+		{"/status\twith\ttabs", "/status"},
+		{"/status\nwith\nnewlines", "/status"},
+		{"/status\r\nwith\rcrlf", "/status"},
+		{"/status@BotName with trailing args", "/status"},
+		{"/", "/"},
 		{"hello", ""},
 		{"", ""},
 		{"   ", ""},

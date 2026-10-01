@@ -843,12 +843,11 @@ var commandTextAliases = map[string]string{
 func parseCommand(text string) string {
 	text = strings.TrimSpace(text)
 	if strings.HasPrefix(text, "/") {
-		fields := strings.Fields(text)
-		if len(fields) == 0 {
-			return ""
+		cmd := text
+		if end := strings.IndexAny(text, " \t\n\r"); end != -1 {
+			cmd = text[:end]
 		}
-		cmd := fields[0]
-		if idx := strings.Index(cmd, "@"); idx != -1 {
+		if idx := strings.IndexByte(cmd, '@'); idx != -1 {
 			cmd = cmd[:idx]
 		}
 		return cmd
