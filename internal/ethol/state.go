@@ -38,6 +38,7 @@ type StateManager struct {
 	keyList       []string
 	recs          map[string]PresenceRecord
 	bw            *bufio.Writer
+	lastPruneDate string
 }
 
 func parseRecordDate(key string, rec PresenceRecord) (time.Time, bool) {
@@ -121,6 +122,7 @@ func NewStateManager(path string, retentionDays ...int) (*StateManager, error) {
 	if sm.retentionDays > 0 {
 		cutoff := time.Now().AddDate(0, 0, -sm.retentionDays)
 		sm.pruneLocked(cutoff)
+		sm.lastPruneDate = time.Now().Format("2006-01-02")
 	}
 
 	return sm, nil
@@ -209,8 +211,12 @@ func (sm *StateManager) AddRecord(recs ...PresenceRecord) error {
 
 func (sm *StateManager) saveLocked() error {
 	if sm.retentionDays > 0 {
-		cutoff := time.Now().AddDate(0, 0, -sm.retentionDays)
-		sm.pruneLocked(cutoff)
+		today := time.Now().Format("2006-01-02")
+		if today != sm.lastPruneDate {
+			cutoff := time.Now().AddDate(0, 0, -sm.retentionDays)
+			sm.pruneLocked(cutoff)
+			sm.lastPruneDate = today
+		}
 	}
 
 	sm.keyList = sm.keyList[:0]

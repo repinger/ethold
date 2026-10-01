@@ -212,6 +212,36 @@ func (sm *StateManager) pruneOlderThanForTest(cutoff time.Time) int {
 	return sm.pruneLocked(cutoff)
 }
 
+func TestStateManager_DailyPruneDeduplication(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	sm, err := NewStateManager(path, 30)
+	if err != nil {
+		t.Fatalf("NewStateManager failed: %v", err)
+	}
+
+	today := time.Now().Format("2006-01-02")
+
+	// First AddRecord should trigger prune and set lastPruneDate
+	err = sm.AddRecord(PresenceRecord{Key: "today_rec", Date: today})
+	if err != nil {
+		t.Fatalf("AddRecord failed: %v", err)
+	}
+	if sm.lastPruneDate != today {
+		t.Fatalf("expected lastPruneDate %q, got %q", today, sm.lastPruneDate)
+	}
+
+	// Subsequent AddRecord on same day should preserve lastPruneDate
+	err = sm.AddRecord(PresenceRecord{Key: "today_rec_2", Date: today})
+	if err != nil {
+		t.Fatalf("AddRecord failed: %v", err)
+	}
+	if sm.lastPruneDate != today {
+		t.Fatalf("expected lastPruneDate to remain %q, got %q", today, sm.lastPruneDate)
+	}
+}
+
 func TestStateManager_PruneOlderThan(t *testing.T) {
 	sm := &StateManager{
 		records: make(map[string]PresenceRecord),
@@ -236,6 +266,7 @@ func TestStateManager_PruneOlderThan(t *testing.T) {
 		t.Error("expected undated to be kept")
 	}
 }
+
 
 func BenchmarkStateManager_CountWithPrefix(b *testing.B) {
 	sm := &StateManager{
