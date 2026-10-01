@@ -7,16 +7,20 @@ Go 1.27.1 daemon that auto-submits attendance on ETHOL PENS via CAS SSO. Single 
 ## Commands
 
 ```bash
-go build -o ethold ./cmd/ethold   # build
-go test -v ./...                                           # all tests (stdlib only, no framework)
+go build -o ethold ./cmd/ethold                            # default release build
+go build -tags dev -o ethold ./cmd/ethold                  # dev build (pprof + debug logs)
+go test -v ./...                                           # test release configuration
+go test -tags dev -v ./...                                 # test dev configuration
 go test -v -run TestFoo ./internal/ethol                   # single test
+go test -v -count=1 -run TestSoakMemory ./internal/ethol   # soak/leak gating check
 go test -run='^$' -bench=. -benchmem ./internal/ethol      # all benchmarks
 go test -run='^$' -bench=BenchmarkFoo -benchmem ./internal/ethol # single benchmark
-go vet ./...                                               # vet
-golangci-lint run ./...                                    # lint
+go vet ./...                                               # vet release
+go vet -tags dev ./...                                     # vet dev
+golangci-lint run ./...                                    # lint release
 golangci-lint run --build-tags dev ./...                   # lint dev build
-go run golang.org/x/tools/cmd/deadcode@latest ./...        # dead code analysis
-go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./... # dev build dead code analysis
+go run golang.org/x/tools/cmd/deadcode@latest ./...        # dead code analysis release
+go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./... # dead code analysis dev
 ```
 
 ### Skills
