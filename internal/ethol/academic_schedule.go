@@ -297,7 +297,11 @@ func parseClockToTime(clockStr string, base time.Time) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	minute, err := strconv.Atoi(s[sep+1:])
+	minStr := s[sep+1:]
+	if end := strings.IndexAny(minStr, ":. \t"); end != -1 {
+		minStr = minStr[:end]
+	}
+	minute, err := strconv.Atoi(minStr)
 	if err != nil {
 		return time.Time{}, err
 	}

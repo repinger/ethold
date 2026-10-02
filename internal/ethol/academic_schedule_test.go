@@ -119,14 +119,16 @@ func TestAcademicManager_ScheduleAndActiveCourse(t *testing.T) {
 }
 
 func TestAcademicManager_ScheduleClockAndEscaping(t *testing.T) {
-	// 1. Test parseClockToTime with dot notation
+	// 1. Test parseClockToTime with dot notation, seconds, and suffixes
 	base := time.Date(2024, 9, 9, 0, 0, 0, 0, WIBLocation)
-	tm, err := parseClockToTime("08.30", base)
-	if err != nil {
-		t.Fatalf("parseClockToTime error: %v", err)
-	}
-	if tm.Hour() != 8 || tm.Minute() != 30 {
-		t.Errorf("expected 08:30, got %02d:%02d", tm.Hour(), tm.Minute())
+	for _, clockStr := range []string{"08.30", "08:30", "08:30:00", "08.30.00", "08:30 WIB"} {
+		tm, err := parseClockToTime(clockStr, base)
+		if err != nil {
+			t.Fatalf("parseClockToTime(%q) error: %v", clockStr, err)
+		}
+		if tm.Hour() != 8 || tm.Minute() != 30 {
+			t.Errorf("expected 08:30 for %q, got %02d:%02d", clockStr, tm.Hour(), tm.Minute())
+		}
 	}
 
 	// 2. Test FormatScheduleText escaping dayName
