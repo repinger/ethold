@@ -34,7 +34,6 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 				"• /tugas - Daftar tugas perkuliahan aktif\n" +
 				"• /materi - Materi & dokumen perkuliahan\n" +
 				"• /pengumuman - Pengumuman resmi kampus\n" +
-				"• /presensi_kelas - Daftar kehadiran sesi presensi aktif\n" +
 				"• /rekap - Rekap kehadiran semester aktif\n" +
 				"• /whoami - Informasi akun ETHOL yang terhubung\n" +
 				"• /relogin - Perbarui sesi login CAS\n" +
@@ -339,7 +338,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		return msg
 
 	case "/presensi_kelas":
-		if s.academic == nil || s.presence == nil {
+		if s.presence == nil {
+			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
+		}
+		if s.academic == nil {
 			return "❌ Fitur presensi kelas tidak tersedia."
 		}
 		s.cmdState.mu.Lock()

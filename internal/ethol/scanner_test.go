@@ -607,7 +607,7 @@ func TestScannerAutoPresenceDisabled(t *testing.T) {
 	defer cancel()
 
 	// Gated commands should return disabled message
-	for _, cmd := range []string{"/check", "/pause", "/resume", "/today"} {
+	for _, cmd := range []string{"/check", "/pause", "/resume", "/today", "/presensi_kelas"} {
 		reply := scanner.HandleTelegramCommand(ctx, cmd)
 		if !strings.Contains(reply, "Auto-presensi tidak aktif") {
 			t.Errorf("cmd %s: expected disabled notice, got %q", cmd, reply)
@@ -616,7 +616,7 @@ func TestScannerAutoPresenceDisabled(t *testing.T) {
 
 	// Help should omit presence-specific commands
 	helpReply := scanner.HandleTelegramCommand(ctx, "/help")
-	for _, omitted := range []string{"/check", "/pause", "/resume", "/today"} {
+	for _, omitted := range []string{"/check", "/pause", "/resume", "/today", "/presensi_kelas"} {
 		if strings.Contains(helpReply, omitted) {
 			t.Errorf("help reply should not contain %s when auto-presence is disabled, got %q", omitted, helpReply)
 		}

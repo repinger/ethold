@@ -202,7 +202,7 @@ func run() error {
 		} else {
 			notifier.SetInlineKeyboard([][]ethol.InlineButton{
 				{{Text: "📅 Jadwal", Data: "/jadwal"}, {Text: "📝 Tugas", Data: "/tugas"}},
-				{{Text: "👥 Presensi Kelas", Data: "/presensi_kelas"}, {Text: "📊 Rekap", Data: "/rekap"}},
+				{{Text: "🎓 Ujian", Data: "/ujian"}, {Text: "📊 Rekap", Data: "/rekap"}},
 				{{Text: "📚 Materi", Data: "/materi"}, {Text: "📢 Pengumuman", Data: "/pengumuman"}},
 				{{Text: "ℹ️ Status", Data: "/status"}, {Text: "❓ Bantuan", Data: "/help"}},
 			})
