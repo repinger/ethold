@@ -157,3 +157,41 @@ func TestCourseManager_CacheImmutability(t *testing.T) {
 		t.Errorf("GetCourses returned aliased slice: got %v, want Original", again2[0].Matakuliah)
 	}
 }
+
+func TestCourseName_Parsing(t *testing.T) {
+	cases := []struct {
+		name     string
+		course   Course
+		expected string
+	}{
+		{
+			name:     "string nama_matakuliah",
+			course:   Course{Nomor: 1, NamaMatakuliah: "Algoritma"},
+			expected: "Algoritma",
+		},
+		{
+			name:     "map nama",
+			course:   Course{Nomor: 2, Matakuliah: map[string]any{"nama": "Basis Data"}},
+			expected: "Basis Data",
+		},
+		{
+			name:     "map matakuliah",
+			course:   Course{Nomor: 3, Matakuliah: map[string]any{"matakuliah": "Jaringan Komputer"}},
+			expected: "Jaringan Komputer",
+		},
+		{
+			name:     "fallback to nomor",
+			course:   Course{Nomor: 4},
+			expected: "Kuliah #4",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.course.CourseName()
+			if got != tc.expected {
+				t.Errorf("CourseName() = %q, want %q", got, tc.expected)
+			}
+		})
+	}
+}

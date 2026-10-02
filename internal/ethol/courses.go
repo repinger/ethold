@@ -34,6 +34,9 @@ func parseCourseNameVal(val any) string {
 		if name, ok := m["nama"].(string); ok && name != "" {
 			return name
 		}
+		if name, ok := m["matakuliah"].(string); ok && name != "" {
+			return name
+		}
 	}
 	return ""
 }
