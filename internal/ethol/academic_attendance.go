@@ -86,15 +86,19 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 			setRosterErr(ErrUnauthorized)
 			return
 		}
+		if resp.StatusCode != http.StatusOK {
+			setRosterErr(fmt.Errorf("fetch roster failed: HTTP %d", resp.StatusCode))
+			return
+		}
 
-		if resp.StatusCode == http.StatusOK {
-			var items []RosterItem
-			if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err == nil {
-				for _, item := range items {
-					if item.NRP != "" || item.Nama != "" {
-						attendees = append(attendees, item)
-					}
-				}
+		var items []RosterItem
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&items); err != nil {
+			setRosterErr(fmt.Errorf("decode roster: %w", err))
+			return
+		}
+		for _, item := range items {
+			if item.NRP != "" || item.Nama != "" {
+				attendees = append(attendees, item)
 			}
 		}
 	}()
@@ -171,6 +175,9 @@ func (am *AcademicManager) GetAttendanceRoster(ctx context.Context, c Course, ke
 
 	if rosterErr != nil {
 		return nil, nil, 0, rosterErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, 0, err
 	}
 
 	if totalEnrolled == 0 && (len(attendees) > 0 || len(absentees) > 0) {
@@ -447,7 +454,7 @@ func (am *AcademicManager) fetchBerandaStats(ctx context.Context, tahun, semeste
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&res); err != nil || !res.Sukses {
 		return 0, 0, false
 	}
-	rata := float64(parseCount(res.Data.RataHadir))
+	rata := parseFloat(res.Data.RataHadir)
 	total := parseCount(res.Data.TotalSesi)
 	return rata, total, true
 }

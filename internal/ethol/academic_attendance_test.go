@@ -71,7 +71,7 @@ func TestAcademicManager_Attendance_BerandaStats(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/presensi/stat-beranda-mahasiswa":
-			w.Write([]byte(`{"sukses": true, "data": {"totalSesi": 40, "rataHadir": 95}}`))
+			w.Write([]byte(`{"sukses": true, "data": {"totalSesi": 40, "rataHadir": 92.5}}`))
 		case "/api/presensi/riwayat":
 			w.Write([]byte(`[{"tanggal":"09-09-2024"}]`))
 		case "/api/presensi/get-tanggal-presensi-dosen-per-semester":
@@ -93,8 +93,8 @@ func TestAcademicManager_Attendance_BerandaStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getAttendanceStatsAt error: %v", err)
 	}
-	if stats.Percentage != 95.0 {
-		t.Errorf("expected official percentage 95.0%% from stat-beranda-mahasiswa, got %f", stats.Percentage)
+	if stats.Percentage != 92.5 {
+		t.Errorf("expected official percentage 92.5%% from stat-beranda-mahasiswa, got %f", stats.Percentage)
 	}
 }
 
@@ -270,6 +270,24 @@ func TestAcademicManager_AttendanceRoster(t *testing.T) {
 	unauthAM := NewAcademicManager(client, unauthServer.URL, 5*time.Minute)
 	if _, _, _, err := unauthAM.GetAttendanceRoster(ctx, course, "KEY"); !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized for roster, got %v", err)
+	}
+
+	// Test 500 Server Error
+	errServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}))
+	defer errServer.Close()
+
+	errAM := NewAcademicManager(client, errServer.URL, 5*time.Minute)
+	if _, _, _, err := errAM.GetAttendanceRoster(ctx, course, "KEY"); err == nil {
+		t.Errorf("expected error on 500 status for roster, got nil")
+	}
+
+	// Test Cancelled Context
+	cancCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, _, _, err := am.GetAttendanceRoster(cancCtx, course, "KEY"); err == nil {
+		t.Errorf("expected error on cancelled context for roster, got nil")
 	}
 }
 

@@ -151,8 +151,31 @@ func parseCount(v any) int {
 	case float64:
 		return int(val)
 	case string:
-		n, _ := strconv.Atoi(strings.TrimSpace(val))
-		return n
+		s := strings.TrimSpace(val)
+		if n, err := strconv.Atoi(s); err == nil {
+			return n
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return int(f)
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
+func parseFloat(v any) float64 {
+	if v == nil {
+		return 0
+	}
+	switch val := v.(type) {
+	case float64:
+		return val
+	case int:
+		return float64(val)
+	case string:
+		f, _ := strconv.ParseFloat(strings.TrimSpace(val), 64)
+		return f
 	default:
 		return 0
 	}

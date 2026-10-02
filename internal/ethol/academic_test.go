@@ -47,6 +47,7 @@ func TestParseCount(t *testing.T) {
 		{"int", 42, 42},
 		{"float64", float64(25.0), 25},
 		{"string valid", "123", 123},
+		{"string float", "40.0", 40},
 		{"string invalid", "abc", 0},
 		{"string empty", "", 0},
 		{"bool", true, 0},
@@ -57,6 +58,31 @@ func TestParseCount(t *testing.T) {
 			got := parseCount(tc.input)
 			if got != tc.expected {
 				t.Errorf("parseCount(%v) = %d, expected %d", tc.input, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestParseFloat(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    any
+		expected float64
+	}{
+		{"nil", nil, 0},
+		{"float64", 92.5, 92.5},
+		{"int", 85, 85.0},
+		{"string float", "88.75", 88.75},
+		{"string int", "100", 100.0},
+		{"string invalid", "invalid", 0},
+		{"bool", false, 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseFloat(tc.input)
+			if got != tc.expected {
+				t.Errorf("parseFloat(%v) = %v, expected %v", tc.input, got, tc.expected)
 			}
 		})
 	}
