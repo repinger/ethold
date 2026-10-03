@@ -62,9 +62,24 @@ internal/ethol/                  # all domain code (flat, single package)
 
 Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
 
-## Conventions
+## Skill Loading (mandatory, before all actions)
 
-- Always load the `golang-patterns` skill before writing, refactoring, or reviewing Go code. Load `golang-concurrency` when handling concurrency, goroutines, or channels; load `golang-testing` when writing tests or benchmarks; load `golang-performance` when optimizing hot paths or profiling allocations; load `golang-error-handling` when designing error types, wrapping errors, or refactoring error paths; load `docker-patterns` when modifying `Dockerfile` or `docker-compose.yml`; load `systematic-debugging` and `golang-troubleshooting` when diagnosing bugs, test failures, panics, races, or runtime anomalies.
+AI agents MUST load every applicable skill BEFORE reading, writing, reviewing, debugging, or refactoring any code or documentation. No code output, no edits, no reviews until skills are loaded. Match tasks to skills:
+
+| Task | Required skill(s) |
+|---|---|
+| Write / refactor / review Go code | `golang-patterns` |
+| Concurrency, goroutines, channels | `golang-patterns`, `golang-concurrency` |
+| Tests, benchmarks | `golang-patterns`, `golang-testing` |
+| Performance, profiling, hot paths | `golang-patterns`, `golang-performance` |
+| Error types, wrapping, error paths | `golang-patterns`, `golang-error-handling` |
+| Dockerfile, docker-compose | `docker-patterns` |
+| Bug diagnosis, test failure, panic, race | `systematic-debugging`, `golang-troubleshooting` |
+| Technical documentation | `asd-ste100` |
+
+When a task spans multiple rows, load the union of all listed skills. Loading a skill means reading its `SKILL.md` file to completion and following any linked references within it.
+
+## Conventions
 - Commit style: `subsystem: imperative summary` (max 50 chars)
   - Body: describe problem and technical solution in detail, wrapped at 72 columns
   - Commits MUST be small and bisectable: each commit is a single logical unit that compiles and passes tests independently; split refactors, features, and fixes across separate commits
@@ -88,7 +103,7 @@ Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
   - Additional CLI flags: `-config` (`.env` path), `-state` (state file path), `-once` (single scan pass), `-concurrency` (worker count, default 4), `-verbose`, `-version`
 - State persisted as atomic JSON writes to `attended_keys.json`
 - Docker: `docker compose up -d` (volume for state persistence at `/app/data/`)
-- Documentation maintenance: when modifying code that affects behavior, APIs, CLI flags, Telegram commands, configuration, or architecture described in `docs/`, update the affected documentation files in the same PR/commit series. Load `asd-ste100` skill when writing or editing technical documentation for clarity and unambiguous specification.
+- Documentation maintenance: when modifying code that affects behavior, APIs, CLI flags, Telegram commands, configuration, or architecture described in `docs/`, update the affected documentation files in the same PR/commit series.
 
 ## Gotchas
 
