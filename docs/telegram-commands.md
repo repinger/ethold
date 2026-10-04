@@ -83,6 +83,9 @@ Additionally, all bot commands support human-friendly text aliases (with or with
 #### `/pengumuman`
 - **Description:** Displays active campus announcements and important administrative bulletins.
 
+#### `/peserta`
+- **Description:** Displays student enrollment count and summary across all enrolled courses.
+
 #### `/presensi_kelas`
 - **Description:** Shows the student attendee list, yet-to-present student list, and attendance count for the currently active class session (requires `ETHOL_AUTO_PRESENCE=true`).
 - **Note:** Responses are cached for 20 seconds to prevent hammering the ETHOL roster API.

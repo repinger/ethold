@@ -574,3 +574,128 @@ func isDateToday(raw, todayStr, todayStrAlt string) bool {
 	}
 	return strings.Contains(raw, todayStr) || strings.Contains(raw, todayStrAlt)
 }
+
+type EnrolledStudent struct {
+	Nomor int    `json:"nomor"`
+	NRP   string `json:"nrp"`
+	Name  string `json:"name"`
+	Nama  string `json:"nama"`
+	JK    string `json:"jk"`
+}
+
+type CourseRosterSummary struct {
+	Course Course
+	Total  int
+}
+
+func (am *AcademicManager) fetchCourseRoster(ctx context.Context, c Course) (int, error) {
+	rosterURL := fmt.Sprintf("%s/api/kuliah/peserta-kuliah?kuliah=%d&jenis_schema=%d", am.baseURL, c.Nomor, c.JenisSchema)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rosterURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create course roster req: %w", err)
+	}
+
+	resp, err := am.client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("fetch course roster: %w", err)
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return 0, ErrUnauthorized
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, nil
+	}
+
+	var students []EnrolledStudent
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&students); err != nil {
+		return 0, fmt.Errorf("decode course roster: %w", err)
+	}
+
+	return len(students), nil
+}
+
+func (am *AcademicManager) GetCourseRosters(ctx context.Context, courses []Course) ([]CourseRosterSummary, error) {
+	// ponytail: no cache; fetch-on-demand is fast and infrequent for roster summary; add TTL cache if latency becomes an issue.
+	results := make([]CourseRosterSummary, len(courses))
+	var wg sync.WaitGroup
+	var errOnce sync.Once
+	var firstErr error
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sem := make(chan struct{}, maxAcademicConcurrency)
+rosterLoop:
+	for i, c := range courses {
+		select {
+		case <-ctx.Done():
+			break rosterLoop
+		case sem <- struct{}{}:
+		}
+
+		wg.Add(1)
+		go func(idx int, crs Course) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
+			count, err := am.fetchCourseRoster(ctx, crs)
+			if err != nil {
+				errOnce.Do(func() {
+					firstErr = err
+					cancel()
+				})
+				return
+			}
+			results[idx] = CourseRosterSummary{
+				Course: crs,
+				Total:  count,
+			}
+		}(i, c)
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func (am *AcademicManager) FormatCourseRosterText(ctx context.Context, courses []Course) (string, error) {
+	if len(courses) == 0 {
+		return "ℹ️ Tidak ada mata kuliah terdaftar.", nil
+	}
+
+	rosters, err := am.GetCourseRosters(ctx, courses)
+	if err != nil {
+		return "", err
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(rosters)*96 + 128)
+	fmt.Fprintf(&sb, "👥 <b>Daftar Peserta Kuliah (%d MK)</b>\n\n", len(rosters))
+
+	totalAll := 0
+	for i, r := range rosters {
+		totalAll += r.Total
+		fmt.Fprintf(&sb, "%d. <b>%s</b>\n   👨‍🏫 %s • 👤 %d mahasiswa\n\n",
+			i+1,
+			html.EscapeString(r.Course.CourseName()),
+			html.EscapeString(r.Course.Dosen),
+			r.Total,
+		)
+	}
+
+	fmt.Fprintf(&sb, "📊 <b>Total:</b> %d mahasiswa (%d mata kuliah)", totalAll, len(rosters))
+	return strings.TrimRight(sb.String(), "\n"), nil
+}
+

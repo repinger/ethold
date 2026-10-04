@@ -386,6 +386,130 @@ func TestAcademicManager_Attendance_CancelledContext(t *testing.T) {
 	}
 }
 
+func TestAcademicManager_CourseRoster(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/kuliah/peserta-kuliah":
+			switch r.URL.Query().Get("kuliah") {
+			case "501":
+				w.Write([]byte(`[
+					{"nomor":1,"nrp":"3120600001","name":"Ahmad Fauzi","jk":"L"},
+					{"nomor":2,"nrp":"3120600002","name":"Budi Pratama","jk":"L"}
+				]`))
+			case "502":
+				w.Write([]byte(`[
+					{"nomor":3,"nrp":"3120600003","name":"Citra Dewi","jk":"P"}
+				]`))
+			default:
+				w.Write([]byte(`[]`))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+	courses := []Course{
+		{Nomor: 501, Matakuliah: "Algoritma Pemrograman", Dosen: "Dr. Budi"},
+		{Nomor: 502, Matakuliah: "Basis Data", Dosen: "Ir. Siti"},
+	}
+
+	// 1. Test GetCourseRosters
+	rosters, err := am.GetCourseRosters(ctx, courses)
+	if err != nil {
+		t.Fatalf("GetCourseRosters error: %v", err)
+	}
+	if len(rosters) != 2 {
+		t.Fatalf("expected 2 course rosters, got %d", len(rosters))
+	}
+	if rosters[0].Total != 2 || rosters[1].Total != 1 {
+		t.Errorf("unexpected counts: course 1=%d, course 2=%d", rosters[0].Total, rosters[1].Total)
+	}
+
+	// 2. Test FormatCourseRosterText
+	text, err := am.FormatCourseRosterText(ctx, courses)
+	if err != nil {
+		t.Fatalf("FormatCourseRosterText error: %v", err)
+	}
+	if !strings.Contains(text, "Daftar Peserta Kuliah (2 MK)") {
+		t.Errorf("expected header with 2 MK, got: %s", text)
+	}
+	if !strings.Contains(text, "Algoritma Pemrograman") || !strings.Contains(text, "2 mahasiswa") {
+		t.Errorf("expected course 501 info in: %s", text)
+	}
+	if !strings.Contains(text, "Total:</b> 3 mahasiswa (2 mata kuliah)") {
+		t.Errorf("expected total count in: %s", text)
+	}
+
+	// 3. Test empty courses
+	emptyText, err := am.FormatCourseRosterText(ctx, nil)
+	if err != nil {
+		t.Fatalf("FormatCourseRosterText empty error: %v", err)
+	}
+	if !strings.Contains(emptyText, "Tidak ada mata kuliah terdaftar") {
+		t.Errorf("expected empty course message, got: %s", emptyText)
+	}
+
+	// 4. Test 401 Unauthorized
+	unauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	}))
+	defer unauthServer.Close()
+
+	unauthAM := NewAcademicManager(client, unauthServer.URL, 5*time.Minute)
+	if _, err := unauthAM.GetCourseRosters(ctx, courses); !errors.Is(err, ErrUnauthorized) {
+		t.Errorf("expected ErrUnauthorized, got: %v", err)
+	}
+
+	// 5. Test malformed JSON
+	badJSONServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{not valid`))
+	}))
+	defer badJSONServer.Close()
+
+	badAM := NewAcademicManager(client, badJSONServer.URL, 5*time.Minute)
+	if _, err := badAM.fetchCourseRoster(ctx, courses[0]); err == nil {
+		t.Fatal("expected error on malformed JSON, got nil")
+	}
+
+	// 6. Test cancelled context
+	cancCtx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := am.GetCourseRosters(cancCtx, courses); err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+}
+
+func BenchmarkFormatCourseRosterText(b *testing.B) {
+	client, _ := NewHTTPClient()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[{"nomor":1},{"nomor":2},{"nomor":3}]`))
+	}))
+	defer server.Close()
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+	courses := make([]Course, 10)
+	for i := range courses {
+		courses[i] = Course{Nomor: 500 + i, Matakuliah: fmt.Sprintf("Mata Kuliah %d", i+1), Dosen: "Dosen"}
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = am.FormatCourseRosterText(ctx, courses)
+	}
+}
+
 func BenchmarkFormatRosterText(b *testing.B) {
 	course := Course{Nomor: 501, Matakuliah: "Algoritma Pemrograman"}
 	attendees := make([]RosterItem, 25)

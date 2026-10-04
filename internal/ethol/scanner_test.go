@@ -987,6 +987,8 @@ func setupMockScannerWith10Courses(tb testing.TB) (*httptest.Server, *Scanner) {
 			w.Write([]byte(`[{"id":1,"judul":"Pengumuman","isi":"Isi"}]`))
 		case r.URL.Path == "/api/ujian/daftar-ujian":
 			w.Write([]byte(`[]`))
+		case r.URL.Path == "/api/kuliah/peserta-kuliah":
+			w.Write([]byte(`[{"nomor":1,"nrp":"3120600001","name":"Budi","jk":"L"}]`))
 		case strings.Contains(r.URL.Path, "/sendMessage"):
 			w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
 		default:
@@ -1040,7 +1042,7 @@ func TestSoakMemory(t *testing.T) {
 	defer server.Close()
 	ctx := context.Background()
 
-	commands := []string{"/status", "/jadwal", "/tugas", "/presensi_kelas", "/rekap", "/materi", "/ujian", "/pengumuman", "/debug"}
+	commands := []string{"/status", "/jadwal", "/tugas", "/presensi_kelas", "/rekap", "/materi", "/ujian", "/pengumuman", "/debug", "/peserta"}
 
 	// Warmup 10 cycles
 	for i := 0; i < 10; i++ {

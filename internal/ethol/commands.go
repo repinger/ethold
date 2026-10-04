@@ -12,7 +12,7 @@ import (
 func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string {
 	devLog("Handling Telegram command", "cmd", cmd)
 	switch cmd {
-	case "/whoami", "/courses", "/check", "/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/presensi_kelas", "/rekap", "/relogin":
+	case "/whoami", "/courses", "/check", "/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/presensi_kelas", "/rekap", "/relogin", "/peserta":
 		if !s.isAuthReady() {
 			return "⏳ <b>Sedang Menghubungkan ke CAS SSO...</b>\nBot sedang mencoba login ke CAS SSO. Harap tunggu hingga terhubung."
 		}
@@ -34,6 +34,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 				"• /tugas - Daftar tugas perkuliahan aktif\n" +
 				"• /materi - Materi & dokumen perkuliahan\n" +
 				"• /pengumuman - Pengumuman resmi kampus\n" +
+				"• /peserta - Daftar mahasiswa per mata kuliah\n" +
 				"• /rekap - Rekap kehadiran semester aktif\n" +
 				"• /whoami - Informasi akun ETHOL yang terhubung\n" +
 				"• /relogin - Perbarui sesi login CAS\n" +
@@ -51,6 +52,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			"• /tugas - Daftar tugas perkuliahan aktif\n" +
 			"• /materi - Materi & dokumen perkuliahan\n" +
 			"• /pengumuman - Pengumuman resmi kampus\n" +
+			"• /peserta - Daftar mahasiswa per mata kuliah\n" +
 			"• /presensi_kelas - Daftar kehadiran sesi presensi aktif\n" +
 			"• /rekap - Rekap kehadiran semester aktif\n" +
 			"• /whoami - Informasi akun ETHOL yang terhubung\n" +
@@ -424,6 +426,28 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		}
 		if err != nil {
 			return fmt.Sprintf("❌ <b>Gagal Mengambil Rekap:</b> %s", html.EscapeString(err.Error()))
+		}
+		return msg
+
+	case "/peserta":
+		if s.academic == nil {
+			return "❌ Fitur peserta kuliah tidak tersedia."
+		}
+		loadPeserta := func() (string, error) {
+			courses, err := s.courses.GetCourses(ctx)
+			if err != nil {
+				return "", err
+			}
+			return s.academic.FormatCourseRosterText(ctx, courses)
+		}
+		msg, err := loadPeserta()
+		if errors.Is(err, ErrUnauthorized) {
+			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
+				msg, err = loadPeserta()
+			}
+		}
+		if err != nil {
+			return fmt.Sprintf("❌ <b>Gagal Mengambil Daftar Peserta:</b> %s", html.EscapeString(err.Error()))
 		}
 		return msg
 

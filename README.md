@@ -123,6 +123,7 @@ When `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` are configured, the daemon listens 
 | `/tugas`          | All              | Lists pending assignments with sorted deadlines, urgency badges, and links       |
 | `/materi`         | All              | Lists uploaded lecture materials (PDFs, docs, links) and videos                  |
 | `/pengumuman`     | All              | Displays official campus announcements and important bulletins                   |
+| `/peserta`        | All              | Displays student enrollment count and summary across all courses                 |
 | `/presensi_kelas` | Auto-Presence    | Displays live attendance roster and count for active class sessions              |
 | `/rekap`          | All              | Official attendance rate and per-course session breakdown                        |
 | `/whoami`         | All              | Displays linked student profile (Name, NRP, ID)                                  |

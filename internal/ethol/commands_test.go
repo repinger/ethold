@@ -239,6 +239,11 @@ func TestScanner_AcademicCommands(t *testing.T) {
 					"is_pinned": 1
 				}
 			]`))
+		case "/api/kuliah/peserta-kuliah":
+			w.Write([]byte(`[
+				{"nomor":1,"nrp":"3120600001","name":"Budi Santoso","jk":"L"},
+				{"nomor":2,"nrp":"3120600002","name":"Citra Dewi","jk":"P"}
+			]`))
 		case "/api/presensi/riwayat":
 			w.Write([]byte(`[{"tanggal":"09-09-2024"}]`))
 		case "/api/presensi/get-tanggal-presensi-dosen-per-semester":
@@ -304,6 +309,12 @@ func TestScanner_AcademicCommands(t *testing.T) {
 		t.Errorf("expected /rekap to contain 'Kehadiran', got: %s", replyRekap)
 	}
 
+	// 3b. /peserta
+	replyPeserta := scanner.HandleTelegramCommand(ctx, "/peserta")
+	if !strings.Contains(replyPeserta, "Daftar Peserta Kuliah") || !strings.Contains(replyPeserta, "2 mahasiswa") {
+		t.Errorf("expected /peserta to contain 'Daftar Peserta Kuliah', got: %s", replyPeserta)
+	}
+
 	// 4. /relogin
 	replyRelogin := scanner.HandleTelegramCommand(ctx, "/relogin")
 	if !strings.Contains(replyRelogin, "Budi Santoso") || !strings.Contains(replyRelogin, "Berhasil") {
@@ -312,7 +323,7 @@ func TestScanner_AcademicCommands(t *testing.T) {
 
 	// 5. /help includes all new commands
 	replyHelp := scanner.HandleTelegramCommand(ctx, "/help")
-	for _, cmd := range []string{"/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/rekap", "/relogin"} {
+	for _, cmd := range []string{"/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/peserta", "/rekap", "/relogin"} {
 		if !strings.Contains(replyHelp, cmd) {
 			t.Errorf("expected /help to mention %s, got: %s", cmd, replyHelp)
 		}
@@ -695,7 +706,7 @@ func TestScanner_AuthReady_Commands(t *testing.T) {
 	}
 
 	// Auth commands return waiting message
-	authCmds := []string{"/whoami", "/courses", "/check", "/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/presensi_kelas", "/rekap", "/relogin"}
+	authCmds := []string{"/whoami", "/courses", "/check", "/jadwal", "/ujian", "/tugas", "/materi", "/pengumuman", "/presensi_kelas", "/rekap", "/relogin", "/peserta"}
 	for _, cmd := range authCmds {
 		reply := scanner.HandleTelegramCommand(ctx, cmd)
 		if !strings.Contains(reply, "Sedang Menghubungkan ke CAS SSO") {

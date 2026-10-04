@@ -790,6 +790,8 @@ var commandTextAliases = map[string]string{
 	"presensi kelas":   "/presensi_kelas",
 	"presensi_kelas":   "/presensi_kelas",
 	"roster":           "/presensi_kelas",
+	"👥 peserta":        "/peserta",
+	"peserta":          "/peserta",
 	"📊 rekap":          "/rekap",
 	"rekap":            "/rekap",
 	"rekapitulasi":     "/rekap",
