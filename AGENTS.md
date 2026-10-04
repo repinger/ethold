@@ -98,9 +98,9 @@ When a task spans multiple rows, load the union of all listed skills. Loading a 
   - Verify both default and `-tags dev` build configurations using `deadcode` (`go run golang.org/x/tools/cmd/deadcode@latest ./...`) and `golangci-lint run --build-tags dev ./...`.
   - Do not leave unused production symbols behind; code solely used by tests must either move to `*_test.go` or be eliminated.
 - Config via `.env` file (custom parser, not third-party); see `.env.example`
-  - Env vars: `ETHOL_EMAIL`, `ETHOL_PASSWORD`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_COMMAND_THREAD_ID`, `TELEGRAM_NOTIF_THREAD_ID`, `ETHOL_AUTO_PRESENCE`, `ETHOL_STATE_RETENTION_DAYS`
+  - Env vars: `ETHOL_EMAIL`, `ETHOL_PASSWORD`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_COMMAND_THREAD_ID`, `TELEGRAM_NOTIF_THREAD_ID`, `ETHOL_AUTO_PRESENCE`, `ETHOL_STATE_RETENTION_DAYS`, `LOG_LEVEL`
   - CLI flags (`-username`, `-password`, `-telegram-token`, `-telegram-chat-id`, `-telegram-command-thread-id`, `-telegram-notif-thread-id`, `-state-retention-days`) override `.env` values
-  - Additional CLI flags: `-config` (`.env` path), `-state` (state file path), `-once` (single scan pass), `-concurrency` (worker count, default 4), `-verbose`, `-version`
+  - Additional CLI flags: `-config` (`.env` path), `-state` (state file path), `-once` (single scan pass), `-concurrency` (worker count, default 4), `-version`
 - State persisted as atomic JSON writes to `attended_keys.json`
 - Docker: `docker compose up -d` (volume for state persistence at `/app/data/`)
 - Documentation maintenance: when modifying code that affects behavior, APIs, CLI flags, Telegram commands, configuration, or architecture described in `docs/`, update the affected documentation files in the same PR/commit series.

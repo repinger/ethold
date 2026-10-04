@@ -4,17 +4,26 @@ package ethol
 
 import (
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 )
 
 const isDevBuild = false
 
-// DefaultLogLevel returns slog.LevelDebug if verbose is true, otherwise slog.LevelInfo.
-func DefaultLogLevel(verbose bool) slog.Level {
-	if verbose {
+// DefaultLogLevel returns the log level from the LOG_LEVEL env var.
+// Accepted values: debug, info, warn, error. Defaults to info.
+func DefaultLogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
+	case "debug":
 		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
-	return slog.LevelInfo
 }
 
 func devLog(_ string, _ ...any) {}

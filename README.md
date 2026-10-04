@@ -59,6 +59,7 @@ ETHOL_AUTO_PRESENCE=
 | `TELEGRAM_NOTIF_THREAD_ID`    | No       | `0`     | Forum topic thread ID where attendance alerts are sent (`0` = general chat)                 |
 | `ETHOL_AUTO_PRESENCE`         | No       | `false` | Enable automated presence scanning and submission (`true`, `1`, `yes`)                      |
 | `ETHOL_STATE_RETENTION_DAYS`  | No       | `90`    | Number of days to retain presence records in state file (`0` disables pruning)               |
+| `LOG_LEVEL`                   | No       | `info` (release) / `debug` (dev) | Log verbosity level: `debug`, `info`, `warn`, or `error`                                     |
 
 > **Note:** Configuration precedence: **CLI flags > System environment variables > `.env` file**.
 > Credentials can also be supplied via `-username` and `-password` CLI flags.
@@ -103,7 +104,6 @@ go test -v ./...
 | `-state-retention-days`       | `90`                 | Days to retain presence records (0 = keep forever) |
 | `-concurrency`                | `4`                  | Number of concurrent course probe workers          |
 | `-once`                       | `false`              | Run single scan pass and exit                      |
-| `-verbose`                    | `false`              | Enable debug logging                               |
 | `-version`                    | `false`              | Print program version and exit                     |
 
 ---

@@ -38,6 +38,7 @@ The table below lists all supported environment variables:
 | `TELEGRAM_NOTIF_THREAD_ID`   | No       | `0`     | Forum topic thread ID where notifications and alerts are posted.                                |
 | `ETHOL_AUTO_PRESENCE`        | No       | `false` | Enables automated attendance scanning and submission (`true`, `1`, `yes`). Disabled by default. |
 | `ETHOL_STATE_RETENTION_DAYS` | No       | `90`    | Retention window in days for state records (0 disables auto-pruning).                           |
+| `LOG_LEVEL`                 | No       | `info` (release) / `debug` (dev) | Log verbosity level: `debug`, `info`, `warn`, or `error`.                                      |
 
 > **Note:** Both `ETHOL_EMAIL` and `ETHOL_PASSWORD` are required (via flag, system env, or file).
 > If Telegram variables are empty, the application disables the Telegram integration.
@@ -78,7 +79,6 @@ You can control the application using command line flags:
 | `--state-retention-days`        | `90`                 | Days to retain presence state records (0 disables auto-pruning).      |
 | `--once`             | `false`              | Run a single scan pass and exit immediately.                          |
 | `--concurrency`      | `4`                  | Number of worker goroutines for course checks.                        |
-| `--verbose`          | `false`              | Show debug log messages in the console.                               |
 | `--version`          | `false`              | Print program version and exit.                                       |
 
 ### Example Flag Commands
@@ -89,10 +89,10 @@ Run directly with CLI credentials:
 ./ethold --username 1234567890 --password secret_password_here --once
 ```
 
-Run one scan with verbose logging:
+Run one scan with debug logging:
 
 ```bash
-./ethold --config /etc/ethol/.env --once --verbose
+LOG_LEVEL=debug ./ethold --config /etc/ethol/.env --once
 ```
 
 Run with 8 worker threads and a custom state file:
@@ -103,9 +103,20 @@ Run with 8 worker threads and a custom state file:
 
 ---
 
-## Log Formatting
+## Log Formatting & Verbosity
 
 `ethold` formats console logs with compact timestamps, level badges (`[DEBUG]`, `[INFO ]`, `[WARN ]`, `[ERROR]`), and key-value attributes.
+
+### Log Levels
+
+Configured via the `LOG_LEVEL` environment variable (defaults to `info` in release builds, `debug` in dev builds):
+
+- `debug`: Detailed diagnostic output (HTTP requests, scan windows, course probes)
+- `info`: Standard operational messages (startup, auth, attendance submission, daemon state)
+- `warn`: Recoverable failures (retryable API errors, degraded notification attempts)
+- `error`: Unrecoverable errors requiring action (invalid credentials, fatal scan failures)
+
+> **Note:** Dev builds (`-tags dev`) default to `debug` level instead of `info`, but can still be overridden with `LOG_LEVEL`.
 
 - **Color Support**: ANSI colors are enabled on interactive terminals (TTY).
 - **Auto-Suppression**: Colors are automatically stripped when stdout is redirected, piped to another process, or when `NO_COLOR` / `TERM=dumb` is set.

@@ -18,15 +18,50 @@ func TestDevLogFunctions(t *testing.T) {
 func TestDevBuildFlag(t *testing.T) {
 	t.Logf("isDevBuild: %v", isDevBuild)
 	if isDevBuild {
-		if lvl := DefaultLogLevel(false); lvl != slog.LevelDebug {
-			t.Fatalf("expected LevelDebug in dev build, got %v", lvl)
+		// Default (no env) should be debug in dev builds.
+		t.Setenv("LOG_LEVEL", "")
+		if lvl := DefaultLogLevel(); lvl != slog.LevelDebug {
+			t.Fatalf("expected LevelDebug by default in dev build, got %v", lvl)
+		}
+		for _, tc := range []struct {
+			env  string
+			want slog.Level
+		}{
+			{"info", slog.LevelInfo},
+			{"INFO", slog.LevelInfo},
+			{"warn", slog.LevelWarn},
+			{"warning", slog.LevelWarn},
+			{"error", slog.LevelError},
+			{"debug", slog.LevelDebug},
+			{"bogus", slog.LevelDebug},
+		} {
+			t.Setenv("LOG_LEVEL", tc.env)
+			if got := DefaultLogLevel(); got != tc.want {
+				t.Errorf("dev build LOG_LEVEL=%q: got %v, want %v", tc.env, got, tc.want)
+			}
 		}
 	} else {
-		if lvl := DefaultLogLevel(false); lvl != slog.LevelInfo {
-			t.Fatalf("expected LevelInfo in release build, got %v", lvl)
+		// Default (no env) should be info in release builds.
+		t.Setenv("LOG_LEVEL", "")
+		if lvl := DefaultLogLevel(); lvl != slog.LevelInfo {
+			t.Fatalf("expected LevelInfo by default in release build, got %v", lvl)
 		}
-		if lvl := DefaultLogLevel(true); lvl != slog.LevelDebug {
-			t.Fatalf("expected LevelDebug when verbose, got %v", lvl)
+		for _, tc := range []struct {
+			env  string
+			want slog.Level
+		}{
+			{"debug", slog.LevelDebug},
+			{"DEBUG", slog.LevelDebug},
+			{"info", slog.LevelInfo},
+			{"warn", slog.LevelWarn},
+			{"warning", slog.LevelWarn},
+			{"error", slog.LevelError},
+			{"bogus", slog.LevelInfo},
+		} {
+			t.Setenv("LOG_LEVEL", tc.env)
+			if got := DefaultLogLevel(); got != tc.want {
+				t.Errorf("release build LOG_LEVEL=%q: got %v, want %v", tc.env, got, tc.want)
+			}
 		}
 	}
 }

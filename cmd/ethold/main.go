@@ -96,7 +96,6 @@ func run() error {
 	statePath := flag.String("state", "attended_keys.json", "Path to state file")
 	once := flag.Bool("once", false, "Run single scan pass and exit")
 	concurrency := flag.Int("concurrency", 4, "Concurrent workers for course checking")
-	verbose := flag.Bool("verbose", false, "Enable debug logging")
 	showVersion := flag.Bool("version", false, "Print program version and exit")
 	username := flag.String("username", "", "ETHOL CAS username or NRP")
 	password := flag.String("password", "", "ETHOL CAS password")
@@ -113,7 +112,7 @@ func run() error {
 	}
 
 	initDevPprof()
-	logLevel := ethol.DefaultLogLevel(*verbose)
+	logLevel := ethol.DefaultLogLevel()
 	slog.SetDefault(slog.New(ethol.NewPrettyHandler(os.Stdout, &ethol.PrettyHandlerOptions{Level: logLevel})))
 	slog.Info("Starting ethold", "version", getVersion())
 
