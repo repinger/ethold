@@ -100,7 +100,9 @@ func TestAcademicManager_MaterialsAndVideos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FormatMaterialsText error: %v", err)
 	}
-	if !strings.Contains(txt, "Struktur Data") || !strings.Contains(txt, "Slide Pertemuan 1") || !strings.Contains(txt, "Rekaman Pertemuan 1") {
+	if !strings.Contains(txt, "Struktur Data") ||
+		!strings.Contains(txt, `<a href="https://ethol.pens.ac.id/storage/materi/p1.pdf"><b>Slide Pertemuan 1</b></a>`) ||
+		!strings.Contains(txt, `<a href="https://youtube.com/watch?v=123"><b>Rekaman Pertemuan 1</b></a>`) {
 		t.Errorf("unexpected formatted materials text: %s", txt)
 	}
 
@@ -199,5 +201,85 @@ func TestAcademicManager_Materials_CancelledContext(t *testing.T) {
 	_, err = am.GetCourseMaterials(ctx, courses)
 	if err == nil {
 		t.Fatal("expected error on cancelled context, got nil")
+	}
+}
+
+func TestFormatItemURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		rawURL  string
+		want    string
+	}{
+		{
+			name:    "empty",
+			baseURL: "https://ethol.pens.ac.id",
+			rawURL:  "",
+			want:    "",
+		},
+		{
+			name:    "spaces in URL",
+			baseURL: "https://ethol.pens.ac.id",
+			rawURL:  "https://ethol.pens.ac.id/upload/material/2802/Pertemuan 06 Akuisisi Data.docx",
+			want:    "https://ethol.pens.ac.id/upload/material/2802/Pertemuan%2006%20Akuisisi%20Data.docx",
+		},
+		{
+			name:    "relative URL with slash",
+			baseURL: "https://ethol.pens.ac.id/",
+			rawURL:  "/upload/material/test.pdf",
+			want:    "https://ethol.pens.ac.id/upload/material/test.pdf",
+		},
+		{
+			name:    "trimmed whitespace",
+			baseURL: "https://ethol.pens.ac.id",
+			rawURL:  "  https://example.com/slide.pdf  ",
+			want:    "https://example.com/slide.pdf",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatItemURL(tt.baseURL, tt.rawURL)
+			if got != tt.want {
+				t.Errorf("formatItemURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMaterialItem_ItemURL(t *testing.T) {
+	tests := []struct {
+		name string
+		item MaterialItem
+		want string
+	}{
+		{
+			name: "path only",
+			item: MaterialItem{Path: "https://ethol.pens.ac.id/file.pdf"},
+			want: "https://ethol.pens.ac.id/file.pdf",
+		},
+		{
+			name: "url only",
+			item: MaterialItem{URL: "https://youtube.com/v1"},
+			want: "https://youtube.com/v1",
+		},
+		{
+			name: "url takes precedence",
+			item: MaterialItem{Path: "path_val", URL: "url_val"},
+			want: "url_val",
+		},
+		{
+			name: "empty",
+			item: MaterialItem{},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.item.ItemURL(); got != tt.want {
+				t.Errorf("ItemURL() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

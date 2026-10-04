@@ -14,9 +14,11 @@ import (
 
 type MaterialItem struct {
 	ID               int    `json:"id"`
+	Nomor            int    `json:"nomor"`
 	Title            string `json:"title"`
 	Judul            string `json:"judul"`
 	Path             string `json:"path"`
+	URL              string `json:"url"`
 	Tipe             int    `json:"tipe"`
 	CreatedIndonesia string `json:"created_indonesia"`
 	KuliahID         int    `json:"kuliah_id"`
@@ -28,6 +30,25 @@ func (m MaterialItem) ItemTitle() string {
 		return m.Title
 	}
 	return m.Judul
+}
+
+func (m MaterialItem) ItemURL() string {
+	if m.URL != "" {
+		return m.URL
+	}
+	return m.Path
+}
+
+// ponytail: space replacement and baseURL prefixing cover standard web/Telegram formats; upgrade to full URI parser if exotic schemes appear
+func formatItemURL(baseURL, rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	if strings.HasPrefix(rawURL, "/") && baseURL != "" {
+		rawURL = strings.TrimRight(baseURL, "/") + rawURL
+	}
+	return strings.ReplaceAll(rawURL, " ", "%20")
 }
 
 type VideoItem = MaterialItem
@@ -212,7 +233,7 @@ func (am *AcademicManager) FormatMaterialsText(ctx context.Context, courses []Co
 	}
 
 	var sb strings.Builder
-	sb.Grow((len(materials) + len(videos)) * 128)
+	sb.Grow((len(materials) + len(videos)) * 256)
 	sb.WriteString(fmt.Sprintf("📚 <b>MATERI & VIDEO KULIAH (%d materi, %d video)</b>\n\n", len(materials), len(videos)))
 
 	courseMatMap := make(map[int][]MaterialItem)
@@ -247,7 +268,12 @@ func (am *AcademicManager) FormatMaterialsText(ctx context.Context, courses []Co
 			if title == "" {
 				title = "Materi Kuliah"
 			}
-			sb.WriteString(fmt.Sprintf("• [%s] <b>%s</b> (%s)\n", tag, html.EscapeString(title), html.EscapeString(tgl)))
+			link := formatItemURL(am.baseURL, m.ItemURL())
+			if link != "" {
+				sb.WriteString(fmt.Sprintf("• [%s] <a href=%q><b>%s</b></a> (%s)\n", tag, html.EscapeString(link), html.EscapeString(title), html.EscapeString(tgl)))
+			} else {
+				sb.WriteString(fmt.Sprintf("• [%s] <b>%s</b> (%s)\n", tag, html.EscapeString(title), html.EscapeString(tgl)))
+			}
 		}
 		for _, v := range cVids {
 			tgl := v.CreatedIndonesia
@@ -258,7 +284,12 @@ func (am *AcademicManager) FormatMaterialsText(ctx context.Context, courses []Co
 			if title == "" {
 				title = "Video Kuliah"
 			}
-			sb.WriteString(fmt.Sprintf("• [🎥 Video] <b>%s</b> (%s)\n", html.EscapeString(title), html.EscapeString(tgl)))
+			link := formatItemURL(am.baseURL, v.ItemURL())
+			if link != "" {
+				sb.WriteString(fmt.Sprintf("• [🎥 Video] <a href=%q><b>%s</b></a> (%s)\n", html.EscapeString(link), html.EscapeString(title), html.EscapeString(tgl)))
+			} else {
+				sb.WriteString(fmt.Sprintf("• [🎥 Video] <b>%s</b> (%s)\n", html.EscapeString(title), html.EscapeString(tgl)))
+			}
 		}
 		sb.WriteString(fmt.Sprintf("   🔗 https://ethol.pens.ac.id/mahasiswa/matakuliah/%d/materi\n\n", c.Nomor))
 	}
