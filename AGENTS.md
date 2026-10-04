@@ -1,72 +1,214 @@
-# AGENTS.md
+# Repository Guidelines
 
-## Project
+## Project Overview
+Ethold is an automated attendance and academic notification daemon for Politeknik Elektronika Negeri Surabaya (PENS). The daemon authenticates to ETHOL via Central Authentication Service (CAS) SSO, monitors active lecture sessions, submits attendance tokens automatically, and serves interactive academic queries through a Telegram bot.
 
-Go 1.27.1 daemon that auto-submits attendance on ETHOL PENS via CAS SSO. Single binary, single `internal/ethol` package, one external dep (`golang.org/x/net` for HTML tokenizer). Auto-presence is opt-in (`ETHOL_AUTO_PRESENCE=true`); without it the daemon runs in academic-only mode (Telegram commands, notifications, no scanning).
+Operating modes:
+- **Auto-Presence Mode** (`ETHOL_AUTO_PRESENCE=true`): Runs scheduled presence checks (every 60 seconds in class windows, every 15 minutes during background sweeps), submits student attendance keys, and records persistent state.
+- **Academic-Only Mode** (default): Disables scanning and submission loops. Provides interactive Telegram bot commands and notification polling only.
 
-## Commands
+## Architecture & Data Flow
+The daemon uses a flat, single-package architecture (`internal/ethol`) centered on the `Scanner` orchestrator.
 
+### Component Structure
+- **Entry Point (`cmd/ethold/main.go`)**: Parses CLI flags and `.env` configuration, binds OS signal cancellation, initializes service singletons, starts background workers, and executes single-pass or continuous scanning.
+- **HTTP Transport (`client.go`)**: Manages `http.Client` with `syncCookieJar` (thread-safe cookie storage) and `headerTransport` (browser profile rotation and header spoofing for `*.pens.ac.id`).
+- **Authentication Engine (`auth.go`)**: Coordinates the four-step CAS login flow (redirect, HTML form parsing, credential POST, token validation) and session refreshes. Employs double-checked locking with `refreshMu` and `mu`.
+- **Presence Engine (`presence.go`)**: Queries `/api/presensi/aktif-kuliah`, extracts session keys using `bytes.Buffer` pools, and sends attendance submissions to `/api/presensi/mahasiswa`.
+- **Scheduler & Planner (`scheduler.go`)**: Hardcodes Western Indonesia Time (WIB, UTC+7). Calculates daily lecture scan windows with 15-minute lead and 20-minute trail buffers.
+- **Scanner Daemon (`scanner.go`)**: Coordinates scan loops, worker pool concurrency, random submission jitter (2 to 10 seconds), and error recovery (session re-login on HTTP 401).
+- **Academic Manager (`academic.go`, `academic_*.go`)**: Manages generic in-memory caches (`cacheEntry[T]`) with TTL expiration for schedules, assignments, materials, announcements, exams, and attendance statistics.
+- **Telegram Interface (`telegram.go`, `commands.go`)**: Routes inbound bot updates, enforces token bucket rate limiting, separates notifications and commands by thread ID, and edits messages in place with `editMessageText`.
+- **State Storage (`state.go`)**: Provides thread-safe, atomic JSON file persistence for attended lecture keys.
+
+### Data Flow
+```
+Timer / Schedule / Telegram Command
+       │
+       ▼
+   Scanner ──(evaluates window)──> Scheduler (WIB UTC+7)
+       │
+       ├─ Worker Pool (goroutines limited by -concurrency)
+       │       │
+       │       ▼
+       │   PresenceEngine ──> HTTP Client (CAS cookies, User-Agent) ──> ETHOL API
+       │       │
+       │       ▼
+       │   StateManager (writes atomically to attended_keys.json)
+       │
+       ▼
+TelegramNotifier (delivers alert or updates message in topic thread)
+```
+
+## Key Directories
+- `cmd/ethold/`: Application entry point and build-tagged pprof listeners (`main.go`, `pprof_dev.go`, `pprof_release.go`).
+- `internal/ethol/`: Domain logic, API clients, HTML extractors, scheduler, scanner, and Telegram bot handlers.
+- `docs/`: Technical documentation covering architecture, component details, API reference, authentication, and deployment.
+- `.agents/skills/`: Installed agent skills for development workflows.
+
+## Development Commands
+
+### Build
 ```bash
-go build -o ethold ./cmd/ethold                            # default release build
-go build -tags dev -o ethold ./cmd/ethold                  # dev build (pprof + debug logs)
-go test -v ./...                                           # test release configuration
-go test -tags dev -v ./...                                 # test dev configuration
-go test -v -run TestFoo ./internal/ethol                   # single test
-go test -v -count=1 -run TestSoakMemory ./internal/ethol   # soak/leak gating check
-go test -run='^$' -bench=. -benchmem ./internal/ethol      # all benchmarks
-go test -run='^$' -bench=BenchmarkFoo -benchmem ./internal/ethol # single benchmark
-go vet ./...                                               # vet release
-go vet -tags dev ./...                                     # vet dev
-golangci-lint run ./...                                    # lint release
-golangci-lint run --build-tags dev ./...                   # lint dev build
-go run golang.org/x/tools/cmd/deadcode@latest ./...        # dead code analysis release
-go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./... # dead code analysis dev
+# Release build (default: stripped binaries, disabled pprof and dev logs)
+go build -trimpath -ldflags="-s -w" -o ethold ./cmd/ethold
+
+# Development build (enables pprof HTTP server and verbose debug logs)
+go build -tags dev -o ethold ./cmd/ethold
 ```
 
-### Skills
-
+### Run
 ```bash
-npx skills experimental_install                            # restore skills from skills-lock.json
+# Run daemon with local .env file
+./ethold -config .env
+
+# Execute a single scan pass and exit
+./ethold -config .env -once
+
+# Start development build with pprof profiling enabled
+PPROF_ADDR="localhost:6060" ./ethold -config .env
 ```
 
-Linter config at `.golangci.yml`. Tests use `t.TempDir()` for isolation; no external services or fixtures required.
+### Test & Benchmark
+```bash
+# Run all unit tests (release configuration)
+go test -v ./...
 
-CI runs both default and `-tags dev` builds for tests, lint, and `go build`. Always verify both.
+# Run all unit tests with dev build tag
+go test -tags dev -v ./...
 
-## Build tags
+# Run single test
+go test -v -run TestCheckCourse ./internal/ethol
 
-The `dev` build tag enables verbose dev-only logging (`dev_log.go` / `dev_log_release.go` pair) and pprof (`cmd/ethold/pprof_dev.go` / `pprof_release.go`, activated via `PPROF_ADDR` env var). The release build stubs these out. CI tests both configurations. When adding build-tagged code, provide both `dev` and `!dev` files.
+# Run soak and memory leak gating check
+go test -v -count=1 -run TestSoakMemory ./internal/ethol
 
-## Structure
+# Run all benchmarks
+go test -run='^$' -bench=. -benchmem ./internal/ethol
 
-```
-cmd/ethold/main.go               # entrypoint, flag parsing, wiring
-cmd/ethold/pprof_{dev,release}.go # dev-only pprof server (build-tagged pair)
-internal/ethol/                  # all domain code (flat, single package)
-  config.go                      # custom .env parser (not third-party)
-  client.go                      # http.Client with cookie jar and custom User-Agent transport
-  auth.go                        # CAS SSO login, session refresh, relogin
-  courses.go                     # course list with TTL cache
-  presence.go                    # presence check and submit engine
-  scheduler.go                   # WIB (UTC+7) timezone windows and scan planning
-  scanner.go                     # main daemon loop, worker pool, scan planning
-  commands.go                    # Telegram command routing and response formatting
-  academic.go                    # academic manager struct, shared cache lifecycle
-  academic_*.go                  # academic domains (schedule, exams, tasks, materials, etc.)
-  debug.go                       # /debug Telegram command, runtime diagnostics
-  log.go                         # pretty CLI log handler with color support
-  dev_log{,_release}.go          # build-tagged dev-only verbose logger pair
-  state.go                       # atomic JSON persistence (attended_keys.json)
-  telegram.go                    # Telegram Bot API (sendMessage, long-poll getUpdates)
+# Run specific benchmark
+go test -run='^$' -bench=BenchmarkScanner_ScanOnce_10Courses -benchmem ./internal/ethol
 ```
 
-Tests are `*_test.go` beside each source file, same `package ethol` (white-box).
+### Lint & Code Quality
+```bash
+# Run golangci-lint on release build
+golangci-lint run ./...
 
-## Skill Loading (mandatory, before all actions)
+# Run golangci-lint on dev build
+golangci-lint run --build-tags dev ./...
 
-AI agents MUST load every applicable skill BEFORE reading, writing, reviewing, debugging, or refactoring any code or documentation. No code output, no edits, no reviews until skills are loaded. Match tasks to skills:
+# Analyze dead code on release build
+go run golang.org/x/tools/cmd/deadcode@latest ./...
 
-| Task | Required skill(s) |
+# Analyze dead code on dev build
+go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./...
+```
+
+## Code Conventions & Common Patterns
+
+### Formatting & Style
+- Standard Go formatting using `gofmt` and `goimports`.
+- Struct tags follow standard JSON camelCase or snake_case matching ETHOL API responses.
+- Standard library only for logging and assertions (`log/slog` and `testing`).
+
+### Logging Conventions (`log/slog`)
+- Follow `sloglint` rules strictly:
+  - Provide key-value arguments only.
+  - Keep log messages static string literals. Never use dynamic string formatting inside log messages.
+  - Valid: `slog.Info("attendance submitted", "course", name, "key", key)`
+  - Invalid: `slog.Info(fmt.Sprintf("submitted %s", name))`
+- Dev-only verbose traces must use `devLog`, `devLogHTTP`, and `devLogTelegramCommand` helpers (stubbed out in release builds).
+
+### Error Handling
+- Wrap underlying errors with `%w`: `fmt.Errorf("parse CAS form: %w", err)`.
+- Inspect typed errors using `errors.Is` and `errors.As`.
+- Expose sentinel errors when callers must branch on the failure mode (`ErrUnauthorized`, `ErrNoActivePresence`, `ErrAlreadyAttended`).
+- Linter rules require specific explanations for any `//nolint:errcheck // reason` directives.
+
+### Concurrency & Asynchronous Patterns
+- Propagate `context.Context` to all network and blocking calls.
+- Bounded concurrency: manage workers through buffered job channels and `sync.WaitGroup`.
+- Double-checked locking: coordinate multi-step authentication through dedicated mutexes (`refreshMu` serializes network login, `mu` protects user session fields).
+- Jitter and backoff: use `math/rand/v2` for random jitter in scan intervals and exponential backoff for network retries.
+- Timers: initialize with `time.NewTicker` and release via `defer ticker.Stop()`.
+
+### Dependency Injection
+- Inject dependencies explicitly via constructors in `cmd/ethold/main.go`.
+- Structs expose constructor functions (for example, `NewAuthManager`, `NewScanner`).
+- Avoid mutable package-level globals. Shared state resides in the cookie jar managed by `client.go`.
+
+### State Management
+- `StateManager` manages `attended_keys.json` using `sync.RWMutex`.
+- Atomic writes: writes JSON to a temporary file (`<path>.tmp`), flushes file descriptors, and renames atomically to target path (`os.Rename`).
+- State pruning: purges entries older than `StateRetentionDays` (default 90 days) during startup loads.
+
+## Important Files
+- `cmd/ethold/main.go`: Application entrypoint, CLI flag definitions, and service wiring.
+- `cmd/ethold/pprof_dev.go` & `cmd/ethold/pprof_release.go`: Build-tagged pprof HTTP server pair.
+- `internal/ethol/client.go`: HTTP client with user-agent rotation and synchronized cookie jar.
+- `internal/ethol/auth.go`: CAS SSO login lifecycle and session refresh handlers.
+- `internal/ethol/presence.go`: Presence session detection and attendance submission engine.
+- `internal/ethol/scheduler.go`: WIB timetable window computations and scan interval planning.
+- `internal/ethol/scanner.go`: Main daemon loop, worker pool management, and retry handling.
+- `internal/ethol/commands.go`: Telegram command routing, rate limiting, and response templates.
+- `internal/ethol/state.go`: Atomic JSON file persistence for attended keys.
+- `internal/ethol/config.go`: Custom `.env` parser implementation without third-party dependencies.
+- `.golangci.yml`: Strict linter configuration for CI and local verification.
+- `Dockerfile`: Multi-stage distroless build specifying `GOMEMLIMIT=48MiB`.
+
+## Runtime/Tooling Preferences
+- **Runtime**: Go `1.27.1` (declared in `go.mod`).
+- **Dependencies**: Minimal dependency policy. Only one direct external dependency allowed: `golang.org/x/net`. Do not add third-party frameworks or libraries.
+- **Package Management**: Standard Go modules (`go mod tidy`, `go mod verify`).
+- **Container Environment**: Distroless non-root image (`gcr.io/distroless/static-debian13:nonroot`) with `CGO_ENABLED=0`. Memory ceiling configured at `GOMEMLIMIT=48MiB`.
+- **Timezone**: Western Indonesia Time (`WIB`, UTC+7) required for all schedule and window calculations.
+
+## Testing & QA
+
+### Testing Framework
+- Standard Go `testing` package exclusively. No external assertion or mocking packages.
+- White-box tests reside in `internal/ethol/*_test.go` under `package ethol`.
+- Isolate file system tests using `t.TempDir()`.
+
+### Test Conventions
+- Structure tests as table-driven cases using `t.Run`.
+- Use `httptest.NewServer` to mock upstream ETHOL endpoints and CAS redirects.
+- In test helpers, set sleep delays and worker jitter to zero (`minDelay = 0`, `maxDelay = 0`) to eliminate flaky timing.
+- Write test setup functions with `tb testing.TB` parameters to share setup across unit tests and benchmarks.
+
+### Soak & Memory Leak Gating (`TestSoakMemory`)
+Run the soak test before completing changes:
+```bash
+go test -v -count=1 -run TestSoakMemory ./internal/ethol
+```
+Mandatory gating criteria:
+1. **Zero Net Goroutine Growth**: `goroutinesEnd <= goroutinesStart`.
+2. **Heap Growth Ceiling**: HeapAlloc delta must not exceed 400 KB (`HeapAlloc delta <= 400 * 1024`).
+
+### Benchmark Regression Gating
+Run benchmarks before and after modifying performance-sensitive code:
+```bash
+go test -run='^$' -bench=. -benchmem ./internal/ethol
+```
+Do not introduce regressions in execution time (`ns/op`), memory allocation (`B/op`), or allocation counts (`allocs/op`).
+
+### Dead Code Elimination
+Run deadcode checks before finalizing commits:
+```bash
+go run golang.org/x/tools/cmd/deadcode@latest ./...
+go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./...
+```
+Remove all dead or unreachable production code.
+
+## Documentation Maintenance
+When changing code that modifies behavior, APIs, CLI flags, Telegram commands, configuration, or system architecture, update the corresponding documents in `docs/` in the same commit series.
+
+## AI Agent Rules & Skill Loading
+
+AI agents MUST load applicable skills before inspecting, editing, or testing code:
+
+| Task | Required Skill(s) |
 |---|---|
 | Write / refactor / review Go code | `golang-patterns` |
 | Concurrency, goroutines, channels | `golang-patterns`, `golang-concurrency` |
@@ -77,40 +219,9 @@ AI agents MUST load every applicable skill BEFORE reading, writing, reviewing, d
 | Bug diagnosis, test failure, panic, race | `systematic-debugging`, `golang-troubleshooting` |
 | Technical documentation | `asd-ste100` |
 
-When a task spans multiple rows, load the union of all listed skills. Loading a skill means reading its `SKILL.md` file to completion and following any linked references within it.
-
-## Conventions
-- Commit style: `subsystem: imperative summary` (max 50 chars)
-  - Body: describe problem and technical solution in detail, wrapped at 72 columns
-  - Commits MUST be small and bisectable: each commit is a single logical unit that compiles and passes tests independently; split refactors, features, and fixes across separate commits
-  - AI agents MUST NOT add `Signed-off-by` tags (only human contributors certify DCO)
-  - AI-assisted commits MUST include: `Assisted-by: <model-name> <tool>` (e.g. `Assisted-by: gemini-3.8-flash-medium Antigravity`)
-- Benchmark baseline & regression gating:
-  - AI agents MUST run relevant benchmarks before modifying code to establish a baseline (`go test -run='^$' -bench=. -benchmem ./internal/ethol`).
-  - After making modifications, re-run benchmarks and compare `ns/op`, `B/op`, and `allocs/op`.
-  - If results show performance regression compared to baseline, the agent MUST revise and optimize the implementation until performance matches or improves upon baseline before completing work.
-- Memory leak & soak testing gating:
-  - AI agents MUST run the soak test before and after modifying code: `go test -v -count=1 -run TestSoakMemory ./internal/ethol`.
-  - Commits MUST NOT introduce positive net goroutine growth (`goroutinesEnd > goroutinesStart`) or excessive heap retention (`HeapAlloc delta > 400KB` in soak test).
-  - Verify that idle goroutines shut down cleanly and in-memory caches or state maps are pruned or bounded.
-- Dead & unused code elimination:
-  - AI agents MUST scan for and remove dead, unreachable, or obsolete code (functions, methods, types, fields, parameters, constants) before finalizing changes.
-  - Verify both default and `-tags dev` build configurations using `deadcode` (`go run golang.org/x/tools/cmd/deadcode@latest ./...`) and `golangci-lint run --build-tags dev ./...`.
-  - Do not leave unused production symbols behind; code solely used by tests must either move to `*_test.go` or be eliminated.
-- Config via `.env` file (custom parser, not third-party); see `.env.example`
-  - Env vars: `ETHOL_EMAIL`, `ETHOL_PASSWORD`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_COMMAND_THREAD_ID`, `TELEGRAM_NOTIF_THREAD_ID`, `ETHOL_AUTO_PRESENCE`, `ETHOL_STATE_RETENTION_DAYS`, `LOG_LEVEL`
-  - CLI flags (`-username`, `-password`, `-telegram-token`, `-telegram-chat-id`, `-telegram-command-thread-id`, `-telegram-notif-thread-id`, `-state-retention-days`) override `.env` values
-  - Additional CLI flags: `-config` (`.env` path), `-state` (state file path), `-once` (single scan pass), `-concurrency` (worker count, default 4), `-version`
-- State persisted as atomic JSON writes to `attended_keys.json`
-- Docker: `docker compose up -d` (volume for state persistence at `/app/data/`)
-- Documentation maintenance: when modifying code that affects behavior, APIs, CLI flags, Telegram commands, configuration, or architecture described in `docs/`, update the affected documentation files in the same PR/commit series.
-
-## Gotchas
-
-- `.env` holds real credentials — never commit it (gitignored). Use `.env.example` as template.
-- The HTTP client uses a custom `User-Agent` transport and shared cookie jar — auth state is implicit in the client, not passed explicitly.
-- `scheduler.go` hardcodes WIB (UTC+7) timezone; time-dependent tests should account for this.
-- `sloglint` enforces key-value only args, static messages, no mixed args — `slog.Info("msg", "key", val)` not `slog.Info(fmt.Sprintf(...))`.
-- Every `//nolint` directive requires an explanation and specific linter name.
-- CI skips on `**.md` path changes; markdown-only PRs won't trigger test/lint jobs.
-- Run the full test suite when modifying shared cache structures in `academic.go` (used across all `academic_*.go` files).
+### Commit Standards
+- Style: `subsystem: imperative summary` (maximum 50 characters).
+- Body: Detail technical solution and rationale, wrapped at 72 columns.
+- AI agents MUST NOT append `Signed-off-by` tags.
+- AI-assisted commits MUST include:
+  `Assisted-by: <model-name> <tool>`
