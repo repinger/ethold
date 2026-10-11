@@ -594,3 +594,312 @@ func TestCalculatePollerInterval(t *testing.T) {
 		t.Errorf("expected 0 for 0 base, got %v", got)
 	}
 }
+
+func TestNormalizeNotifContent(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "extra whitespace and mixed case",
+			input:    "  Pengingat: \t Tugas \n Basis Data   ",
+			expected: "pengingat: tugas basis data",
+		},
+		{
+			name:     "empty text",
+			input:    "   ",
+			expected: "",
+		},
+		{
+			name:     "already normalized",
+			input:    "tugas struktur data",
+			expected: "tugas struktur data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeNotifContent(tt.input)
+			if got != tt.expected {
+				t.Errorf("normalizeNotifContent(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestAcademicManager_NotificationPolling_DeduplicateAssignmentReminders_SameBatch(t *testing.T) {
+	var (
+		mu           sync.Mutex
+		taskCalls    int
+		markedRead   = make(map[string]bool)
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			w.Write([]byte(`{"jumlah":2}`))
+		case "/api/notifikasi/mahasiswa":
+			w.Write([]byte(`[
+				{
+					"idNotifikasi": "uuid-1",
+					"kodeNotifikasi": "PENGINGAT-TUGAS",
+					"keterangan": "Pengingat: Tugas Basis Data deadline 23:59",
+					"status": "1"
+				},
+				{
+					"idNotifikasi": "uuid-2",
+					"kodeNotifikasi": "PENGINGAT-TUGAS",
+					"keterangan": "Pengingat: Tugas Basis Data deadline 23:59",
+					"status": "1"
+				}
+			]`))
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			markedRead[body["idNotifikasi"]] = true
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+
+	err = am.PollNotifications(ctx, nil, func(ket string) {
+		taskCalls++
+	}, nil)
+
+	if err != nil {
+		t.Fatalf("PollNotifications error: %v", err)
+	}
+	if taskCalls != 1 {
+		t.Errorf("expected task callback invoked exactly 1 time, got %d", taskCalls)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !markedRead["uuid-1"] || !markedRead["uuid-2"] {
+		t.Errorf("expected both uuid-1 and uuid-2 marked read, got: %+v", markedRead)
+	}
+}
+
+func TestAcademicManager_NotificationPolling_DeduplicateAssignmentReminders_ConsecutiveBatches(t *testing.T) {
+	var (
+		mu         sync.Mutex
+		taskCalls  int
+		markedRead = make(map[string]bool)
+		pollCount  int
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			w.Write([]byte(`{"jumlah":1}`))
+		case "/api/notifikasi/mahasiswa":
+			mu.Lock()
+			p := pollCount
+			mu.Unlock()
+			if p == 0 {
+				w.Write([]byte(`[
+					{
+						"idNotifikasi": "uuid-1",
+						"kodeNotifikasi": "TUGAS",
+						"keterangan": "Pengingat: Tugas Basis Data deadline 23:59",
+						"status": "1"
+					}
+				]`))
+			} else {
+				w.Write([]byte(`[
+					{
+						"idNotifikasi": "uuid-2",
+						"kodeNotifikasi": "TUGAS",
+						"keterangan": "  Pengingat: Tugas Basis Data deadline 23:59  ",
+						"status": "1"
+					}
+				]`))
+			}
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			markedRead[body["idNotifikasi"]] = true
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+
+	// Cycle 1
+	err = am.PollNotifications(ctx, nil, func(ket string) {
+		taskCalls++
+	}, nil)
+	if err != nil {
+		t.Fatalf("first poll error: %v", err)
+	}
+	if taskCalls != 1 {
+		t.Fatalf("expected 1 task call after first poll, got %d", taskCalls)
+	}
+
+	// Cycle 2 with duplicate content under different ID
+	mu.Lock()
+	pollCount++
+	mu.Unlock()
+
+	err = am.PollNotifications(ctx, nil, func(ket string) {
+		taskCalls++
+	}, nil)
+	if err != nil {
+		t.Fatalf("second poll error: %v", err)
+	}
+	if taskCalls != 1 {
+		t.Errorf("expected still 1 task call after second poll (deduplicated), got %d", taskCalls)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !markedRead["uuid-1"] || !markedRead["uuid-2"] {
+		t.Errorf("expected both uuid-1 and uuid-2 marked read across batches, got: %+v", markedRead)
+	}
+}
+
+func TestAcademicManager_NotificationPolling_DistinctAssignments(t *testing.T) {
+	var taskCalls int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			w.Write([]byte(`{"jumlah":2}`))
+		case "/api/notifikasi/mahasiswa":
+			w.Write([]byte(`[
+				{
+					"idNotifikasi": "uuid-1",
+					"kodeNotifikasi": "TUGAS-BARU",
+					"keterangan": "Tugas 1 Basis Data",
+					"status": "1"
+				},
+				{
+					"idNotifikasi": "uuid-2",
+					"kodeNotifikasi": "TUGAS-BARU",
+					"keterangan": "Tugas 2 Jaringan Komputer",
+					"status": "1"
+				}
+			]`))
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+
+	err = am.PollNotifications(ctx, nil, func(ket string) {
+		taskCalls++
+	}, nil)
+
+	if err != nil {
+		t.Fatalf("PollNotifications error: %v", err)
+	}
+	if taskCalls != 2 {
+		t.Errorf("expected task callback invoked 2 times for distinct tasks, got %d", taskCalls)
+	}
+}
+
+func TestAcademicManager_InitNotificationBaseline_TaskContentDedup(t *testing.T) {
+	var taskCalls int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			w.Write([]byte(`{"jumlah":1}`))
+		case "/api/notifikasi/mahasiswa":
+			w.Write([]byte(`[
+				{
+					"idNotifikasi": "baseline-1",
+					"kodeNotifikasi": "TUGAS",
+					"keterangan": "Pengingat: Tugas Basis Data deadline 23:59",
+					"status": "1"
+				}
+			]`))
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+
+	if err := am.InitNotificationBaseline(ctx); err != nil {
+		t.Fatalf("InitNotificationBaseline error: %v", err)
+	}
+
+	// Now poll with a new ID but identical task content
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			w.Write([]byte(`{"jumlah":1}`))
+		case "/api/notifikasi/mahasiswa":
+			w.Write([]byte(`[
+				{
+					"idNotifikasi": "new-dup-2",
+					"kodeNotifikasi": "TUGAS",
+					"keterangan": "Pengingat: Tugas Basis Data deadline 23:59",
+					"status": "1"
+				}
+			]`))
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	err = am.PollNotifications(ctx, nil, func(ket string) {
+		taskCalls++
+	}, nil)
+	if err != nil {
+		t.Fatalf("PollNotifications error: %v", err)
+	}
+	if taskCalls != 0 {
+		t.Errorf("expected 0 task calls because baseline already recorded content, got %d", taskCalls)
+	}
+}

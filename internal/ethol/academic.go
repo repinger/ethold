@@ -35,15 +35,17 @@ type AcademicManager struct {
 	attendanceCache     map[string]attendanceCacheEntry // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	examCache           map[string]examCacheEntry       // ponytail: in-memory map with TTL sufficient for single-user daemon; upgrade to bounded LRU if multi-tenant
 	announcementCache   announcementCacheEntry
-	processedNotifIDs   map[string]struct{} // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
-	processedNotifQueue []string
-	notifHead           int
-	notifBaselineDone   bool
+	processedNotifIDs     map[string]struct{} // ponytail: in-memory set bounded to maxNotifHistory; upgrade to persistent cache if multi-instance
+	processedNotifQueue   []string
+	notifHead             int
+	processedNotifContent map[string]time.Time
+	notifBaselineDone     bool
 }
 
 const (
 	maxNotifHistory        = 1000
 	maxAcademicConcurrency = 6
+	notifDedupWindow       = 24 * time.Hour
 )
 
 func NewAcademicManager(client *http.Client, baseURL string, ttl time.Duration) *AcademicManager {
@@ -63,7 +65,8 @@ func NewAcademicManager(client *http.Client, baseURL string, ttl time.Duration) 
 		videoCache:        make(map[int]videoCacheEntry),
 		attendanceCache:   make(map[string]attendanceCacheEntry),
 		examCache:         make(map[string]examCacheEntry),
-		processedNotifIDs: make(map[string]struct{}),
+		processedNotifIDs:     make(map[string]struct{}),
+		processedNotifContent: make(map[string]time.Time),
 	}
 }
 
@@ -106,6 +109,11 @@ func (am *AcademicManager) sweepExpiredLocked(now time.Time) {
 	sweepMap(am.examCache, am.ttl, now)
 	if !am.announcementCache.timestamp.IsZero() && now.Sub(am.announcementCache.timestamp) >= am.ttl {
 		am.announcementCache = announcementCacheEntry{}
+	}
+	for k, ts := range am.processedNotifContent {
+		if now.Sub(ts) >= notifDedupWindow {
+			delete(am.processedNotifContent, k)
+		}
 	}
 }
 

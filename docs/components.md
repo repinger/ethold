@@ -21,7 +21,7 @@ This document describes each module in the `internal/ethol` package.
 | `academic_materials.go` | Fetches lecture materials, video recordings, and formats material lists. |
 | `academic_announcements.go` | Fetches campus-wide announcements and formats bulletin updates. |
 | `academic_attendance.go` | Computes attendance statistics, retrieves class rosters, and formats recap data. |
-| `academic_notif.go` | Polls ETHOL notifications, marks items as read, and handles alert dispatch. |
+| `academic_notif.go` | Polls ETHOL notifications, marks items as read, and handles alert dispatch with ID and 24-hour content-based deduplication for assignments. |
 | `debug.go` | Handles the `/debug` Telegram command, reporting runtime diagnostics. |
 | `log.go` | Formats colored, neat CLI log output for `slog`. |
 | `state.go` | Persists attendance keys and records to disk atomically. |
@@ -195,7 +195,7 @@ The academic module queries academic information including timetables, assignmen
 - `academic_materials.go`: Fetches downloadable lecture files and external video links for monitored courses, formatting them with HTML links.
 - `academic_announcements.go`: Fetches official campus bulletins and important notifications, stripping HTML tags and formatting announcement views.
 - `academic_attendance.go`: Queries official attendance dashboard stats (`stat-beranda-mahasiswa`) and course history (`riwayat`), calculates semester attendance percentages, and inspects live class attendance rosters.
-- `academic_notif.go`: Manages background polling of ETHOL notifications, tracking seen IDs to prevent duplicate alerts, and triggering callbacks on new presence, task, or other system notifications.
+- `academic_notif.go`: Manages background polling of ETHOL notifications, tracking seen IDs and applying 24-hour content-based deduplication for assignments and reminders to prevent duplicate alerts, and triggering callbacks on new presence, task, or other system notifications.
 
 ### Key Types
 

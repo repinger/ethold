@@ -214,7 +214,12 @@ func run() error {
 			case <-authReady:
 			}
 			academic.StartNotificationPoller(ctx, 30*time.Second, auth.EnsureSession, nil, func(ket string) {
-				_ = notifier.SendMessage(ctx, fmt.Sprintf("📝 <b>NOTIFIKASI TUGAS BARU:</b>\n%s", html.EscapeString(ket)))
+				title := "NOTIFIKASI TUGAS BARU"
+				upperKet := strings.ToUpper(ket)
+				if strings.Contains(upperKet, "PENGINGAT") || strings.Contains(upperKet, "REMINDER") {
+					title = "PENGINGAT TUGAS"
+				}
+				_ = notifier.SendMessage(ctx, fmt.Sprintf("📝 <b>%s:</b>\n%s", title, html.EscapeString(ket)))
 			}, func(kode, ket string) {
 				title := "NOTIFIKASI ETHOL"
 				if k := strings.TrimSpace(kode); k != "" {

@@ -65,6 +65,53 @@ func (am *AcademicManager) addProcessedNotifLocked(id string) bool {
 	return true
 }
 
+func normalizeNotifContent(text string) string {
+	return strings.ToLower(strings.Join(strings.Fields(text), " "))
+}
+
+func (am *AcademicManager) isDuplicateTaskContentLocked(text string, now time.Time) bool {
+	if am.processedNotifContent == nil {
+		return false
+	}
+	key := normalizeNotifContent(text)
+	if key == "" {
+		return false
+	}
+	ts, exists := am.processedNotifContent[key]
+	if !exists {
+		return false
+	}
+	return now.Sub(ts) < notifDedupWindow
+}
+
+func (am *AcademicManager) recordProcessedTaskContentLocked(text string, now time.Time) {
+	if am.processedNotifContent == nil {
+		am.processedNotifContent = make(map[string]time.Time)
+	}
+	key := normalizeNotifContent(text)
+	if key == "" {
+		return
+	}
+	if len(am.processedNotifContent) >= maxNotifHistory {
+		var oldestKey string
+		var oldestTime time.Time
+		for k, ts := range am.processedNotifContent {
+			if now.Sub(ts) >= notifDedupWindow {
+				delete(am.processedNotifContent, k)
+				continue
+			}
+			if oldestKey == "" || ts.Before(oldestTime) {
+				oldestKey = k
+				oldestTime = ts
+			}
+		}
+		if len(am.processedNotifContent) >= maxNotifHistory && oldestKey != "" {
+			delete(am.processedNotifContent, oldestKey)
+		}
+	}
+	am.processedNotifContent[key] = now
+}
+
 func (am *AcademicManager) fetchUnreadNotifications(ctx context.Context) ([]NotificationItem, error) {
 	checkURL := fmt.Sprintf("%s/api/notifikasi/mahasiswa-belum-baca", am.baseURL)
 	reqCheck, err := http.NewRequestWithContext(ctx, http.MethodGet, checkURL, nil)
@@ -137,7 +184,7 @@ func (am *AcademicManager) InitNotificationBaseline(ctx context.Context) error {
 
 	am.mu.Lock()
 	defer am.mu.Unlock()
-
+	now := time.Now()
 	for _, item := range items {
 		if strings.TrimSpace(item.IDNotifikasi) == "" {
 			continue
@@ -146,6 +193,12 @@ func (am *AcademicManager) InitNotificationBaseline(ctx context.Context) error {
 			continue
 		}
 		am.addProcessedNotifLocked(item.IDNotifikasi)
+
+		kode := strings.ToUpper(strings.TrimSpace(item.KodeNotifikasi))
+		isTask := strings.Contains(kode, "TUGAS") || strings.Contains(strings.ToLower(item.Keterangan), "tugas")
+		if isTask {
+			am.recordProcessedTaskContentLocked(item.Keterangan, now)
+		}
 	}
 	am.notifBaselineDone = true
 	return nil
@@ -180,14 +233,28 @@ func (am *AcademicManager) PollNotifications(
 		_ = am.markNotificationRead(ctx, item.IDNotifikasi)
 
 		kode := strings.ToUpper(strings.TrimSpace(item.KodeNotifikasi))
+		isTask := strings.Contains(kode, "TUGAS") || strings.Contains(strings.ToLower(item.Keterangan), "tugas")
+		if isTask {
+			now := time.Now()
+			am.mu.Lock()
+			if am.isDuplicateTaskContentLocked(item.Keterangan, now) {
+				am.mu.Unlock()
+				slog.Debug("Dropping duplicate assignment notification", "id", item.IDNotifikasi, "kode", item.KodeNotifikasi, "keterangan", item.Keterangan)
+				continue
+			}
+			am.recordProcessedTaskContentLocked(item.Keterangan, now)
+			am.mu.Unlock()
+
+			if onTaskNotif != nil {
+				onTaskNotif(item.Keterangan)
+			}
+			continue
+		}
+
 		switch {
 		case strings.Contains(kode, "PRESENSI"):
 			if onPresenceNotif != nil {
 				onPresenceNotif(item.Keterangan)
-			}
-		case strings.Contains(kode, "TUGAS"):
-			if onTaskNotif != nil {
-				onTaskNotif(item.Keterangan)
 			}
 		default:
 			if onOtherNotif != nil {
