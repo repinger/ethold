@@ -64,6 +64,10 @@ func (a *AuthManager) Login(ctx context.Context) (*UserInfo, error) {
 func (a *AuthManager) loginLocked(ctx context.Context) (*UserInfo, error) {
 	slog.Info("Starting CAS SSO authentication")
 
+	if err := a.resetSessionLocked(); err != nil {
+		return nil, err
+	}
+
 	// 1. GET cas-redirect
 	redirURL := a.baseURL + "/api/auth/cas-redirect"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, redirURL, nil)
@@ -160,28 +164,29 @@ type cookieResetter interface {
 func (a *AuthManager) Relogin(ctx context.Context) (*UserInfo, error) {
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
+	return a.loginLocked(ctx)
+}
 
+func (a *AuthManager) resetSessionLocked() error {
 	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.client != nil && a.client.Jar != nil {
 		if cr, ok := a.client.Jar.(cookieResetter); ok {
 			if err := cr.Reset(); err != nil {
-				a.mu.Unlock()
-				return nil, fmt.Errorf("reset cookie jar: %w", err)
+				return fmt.Errorf("reset cookie jar: %w", err)
 			}
 		} else {
 			jar, err := cookiejar.New(nil)
 			if err != nil {
-				a.mu.Unlock()
-				return nil, fmt.Errorf("reset cookie jar: %w", err)
+				return fmt.Errorf("reset cookie jar: %w", err)
 			}
 			a.client.Jar = jar
 		}
 	}
 	a.user = nil
 	a.lastLogin = time.Time{}
-	a.mu.Unlock()
-
-	return a.loginLocked(ctx)
+	return nil
 }
 
 func (a *AuthManager) EnsureSession(ctx context.Context) error {
@@ -247,7 +252,7 @@ func extractCASForm(r io.Reader) (string, url.Values, error) {
 		switch tt {
 		case html.ErrorToken:
 			if err := z.Err(); errors.Is(err, io.EOF) {
-				if action == "" && len(values) == 0 {
+				if !inForm || (action == "" && len(values) == 0) {
 					return "", nil, errors.New("CAS form fm1 not found")
 				}
 				return action, values, nil
@@ -261,10 +266,10 @@ func extractCASForm(r io.Reader) (string, url.Values, error) {
 				var formAction string
 				for {
 					key, val, more := z.TagAttr()
-					if bytes.Equal(key, []byte("id")) && bytes.Equal(val, []byte("fm1")) {
+					if (bytes.EqualFold(key, []byte("id")) || bytes.EqualFold(key, []byte("name"))) && bytes.Equal(val, []byte("fm1")) {
 						isFM1 = true
 					}
-					if bytes.Equal(key, []byte("action")) {
+					if bytes.EqualFold(key, []byte("action")) {
 						formAction = string(val)
 					}
 					if !more {
@@ -279,10 +284,10 @@ func extractCASForm(r io.Reader) (string, url.Values, error) {
 				var name, val string
 				for {
 					key, value, more := z.TagAttr()
-					if bytes.Equal(key, []byte("name")) {
+					if bytes.EqualFold(key, []byte("name")) {
 						name = string(value)
 					}
-					if bytes.Equal(key, []byte("value")) {
+					if bytes.EqualFold(key, []byte("value")) {
 						val = string(value)
 					}
 					if !more {

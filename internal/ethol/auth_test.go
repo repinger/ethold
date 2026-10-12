@@ -424,6 +424,71 @@ func TestAuthManager_EnsureSession_401TriggersFullLogin(t *testing.T) {
 	}
 }
 
+func TestAuthManager_EnsureSession_ResetsCookiesOnExpiredSession(t *testing.T) {
+	var fullLoginCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				// If stale CAS SSO cookie is sent, simulate CAS redirecting or rendering
+				// a page without fm1.
+				if c, err := r.Cookie("CASTGC"); err == nil && c.Value != "" {
+					w.Header().Set("Content-Type", "text/html")
+					fmt.Fprint(w, `<html><body>Dashboard without fm1</body></html>`)
+					return
+				}
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login?service=test" method="post"><input type="hidden" name="lt" value="LT-1"/><input type="text" name="username"/><input type="password" name="password"/></form>`)
+				return
+			}
+			fullLoginCount++
+			http.SetCookie(w, &http.Cookie{Name: "CASTGC", Value: fmt.Sprintf("tgt-%d", fullLoginCount), Path: "/"})
+			http.SetCookie(w, &http.Cookie{Name: "ETHOL_SESS", Value: fmt.Sprintf("sess-%d", fullLoginCount), Path: "/"})
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"nomor":1,"nama":"Tester","nipnrp":"123"}`))
+		case "/api/auth/refresh":
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatalf("new http client: %v", err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	ctx := context.Background()
+
+	// Initial login sets CASTGC
+	if _, err := auth.Login(ctx); err != nil {
+		t.Fatalf("initial login failed: %v", err)
+	}
+	if fullLoginCount != 1 {
+		t.Fatalf("expected 1 initial login, got %d", fullLoginCount)
+	}
+
+	// Expire lastLogin to force check
+	auth.mu.Lock()
+	auth.lastLogin = time.Now().Add(-1 * time.Hour)
+	auth.mu.Unlock()
+
+	// EnsureSession must reset cookies so /cas/login receives clean request and displays fm1
+	if err := auth.EnsureSession(ctx); err != nil {
+		t.Fatalf("expected EnsureSession to succeed by resetting stale cookies, got: %v", err)
+	}
+	if fullLoginCount != 2 {
+		t.Errorf("expected 2 full logins, got %d", fullLoginCount)
+	}
+}
+
 func BenchmarkExtractCASForm(b *testing.B) {
 	htmlData := `
 <!DOCTYPE html>
