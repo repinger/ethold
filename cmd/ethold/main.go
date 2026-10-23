@@ -104,6 +104,7 @@ func run() error {
 	telegramCommandThreadID := flag.Int64("telegram-command-thread-id", 0, "Telegram command topic thread ID (forum supergroups)")
 	telegramNotifThreadID := flag.Int64("telegram-notif-thread-id", 0, "Telegram notification topic thread ID (forum supergroups)")
 	stateRetentionDays := flag.Int("state-retention-days", 0, "Days to retain presence state records (0 to use config default)")
+	notifPollInterval := flag.Duration("notif-poll-interval", 0, "Notification poll interval (e.g. 60s, 2m; 0 uses config default)")
 	flag.Parse()
 
 	if *showVersion {
@@ -123,6 +124,7 @@ func run() error {
 		TelegramChatID:          *telegramChatID,
 		TelegramCommandThreadID: *telegramCommandThreadID,
 		TelegramNotifThreadID:   *telegramNotifThreadID,
+		NotifPollInterval:       *notifPollInterval,
 	})
 	if err != nil {
 		slog.Error("Failed to load configuration", "path", *configPath, "error", err)
@@ -213,7 +215,7 @@ func run() error {
 				return
 			case <-authReady:
 			}
-			academic.StartNotificationPoller(ctx, 30*time.Second, auth.EnsureSession, nil, func(ket string) {
+			academic.StartNotificationPoller(ctx, cfg.NotifPollInterval, auth.EnsureSession, nil, func(ket string) {
 				title := "NOTIFIKASI TUGAS BARU"
 				upperKet := strings.ToUpper(ket)
 				if strings.Contains(upperKet, "PENGINGAT") || strings.Contains(upperKet, "REMINDER") {
