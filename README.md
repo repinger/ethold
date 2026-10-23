@@ -59,6 +59,7 @@ ETHOL_AUTO_PRESENCE=
 | `TELEGRAM_NOTIF_THREAD_ID`    | No       | `0`     | Forum topic thread ID where attendance alerts are sent (`0` = general chat)                 |
 | `ETHOL_AUTO_PRESENCE`         | No       | `false` | Enable automated presence scanning and submission (`true`, `1`, `yes`)                      |
 | `ETHOL_STATE_RETENTION_DAYS`  | No       | `90`    | Number of days to retain presence records in state file (`0` disables pruning)               |
+| `ETHOL_NOTIF_POLL_INTERVAL`   | No       | `60s`   | Academic notification polling interval (Go duration, e.g. `60s`, `2m`)                      |
 | `LOG_LEVEL`                   | No       | `info` (release) / `debug` (dev) | Log verbosity level: `debug`, `info`, `warn`, or `error`                                     |
 
 > **Note:** Configuration precedence: **CLI flags > System environment variables > `.env` file**.
@@ -102,6 +103,7 @@ go test -v ./...
 | `-telegram-notif-thread-id`   | `0`                  | Telegram forum topic thread ID for alerts          |
 | `-state`                      | `attended_keys.json` | Path to state persistence file                     |
 | `-state-retention-days`       | `90`                 | Days to retain presence records (0 = keep forever) |
+| `-notif-poll-interval`        | `60s`                | Notification poll interval (0 uses config/default) |
 | `-concurrency`                | `4`                  | Number of concurrent course probe workers          |
 | `-once`                       | `false`              | Run single scan pass and exit                      |
 | `-version`                    | `false`              | Print program version and exit                     |
