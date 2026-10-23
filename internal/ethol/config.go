@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -19,7 +20,11 @@ type Config struct {
 	TelegramNotifThreadID   int64
 	AutoPresence            bool
 	StateRetentionDays      int
+	NotifPollInterval       time.Duration
 }
+
+// DefaultNotifPollInterval is the default duration between notification polling cycles.
+const DefaultNotifPollInterval = 60 * time.Second
 
 func parseBool(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -93,6 +98,21 @@ func resolveInt64(override int64, key string, fileEnv map[string]string) int64 {
 	return parseInt64(fileEnv[key])
 }
 
+func resolveDuration(override time.Duration, key string, fileEnv map[string]string, defaultVal time.Duration) time.Duration {
+	if override > 0 {
+		return override
+	}
+	val := resolveValue("", key, fileEnv)
+	if val == "" {
+		return defaultVal
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(val))
+	if err != nil || d <= 0 {
+		return defaultVal
+	}
+	return d
+}
+
 func LoadConfig(path string, overrides ...Config) (*Config, error) {
 	if len(overrides) > 1 {
 		return nil, fmt.Errorf("at most one Config override allowed, got %d", len(overrides))
@@ -123,6 +143,7 @@ func LoadConfig(path string, overrides ...Config) (*Config, error) {
 		TelegramNotifThreadID:   resolveInt64(override.TelegramNotifThreadID, "TELEGRAM_NOTIF_THREAD_ID", env),
 		AutoPresence:            override.AutoPresence || parseBool(resolveValue("", "ETHOL_AUTO_PRESENCE", env)),
 		StateRetentionDays:      resolveInt(override.StateRetentionDays, "ETHOL_STATE_RETENTION_DAYS", env, DefaultRetentionDays),
+		NotifPollInterval:       resolveDuration(override.NotifPollInterval, "ETHOL_NOTIF_POLL_INTERVAL", env, DefaultNotifPollInterval),
 	}
 
 	if cfg.Username == "" || cfg.Password == "" {

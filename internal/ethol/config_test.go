@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadEnvConfig(t *testing.T) {
@@ -165,6 +166,48 @@ func TestLoadConfigAutoPresence(t *testing.T) {
 			}
 			if cfg.AutoPresence != tc.expected {
 				t.Errorf("ETHOL_AUTO_PRESENCE=%q: expected %v, got %v", tc.envVal, tc.expected, cfg.AutoPresence)
+			}
+		})
+	}
+}
+
+func TestLoadConfigNotifPollInterval(t *testing.T) {
+	cases := []struct {
+		name     string
+		envVal   string
+		override time.Duration
+		expected time.Duration
+	}{
+		{"default on empty", "", 0, DefaultNotifPollInterval},
+		{"custom duration 30s", "30s", 0, 30 * time.Second},
+		{"custom duration 2m", "2m", 0, 2 * time.Minute},
+		{"fallback on invalid string", "not-a-duration", 0, DefaultNotifPollInterval},
+		{"fallback on negative duration", "-5s", 0, DefaultNotifPollInterval},
+		{"fallback on zero duration string", "0s", 0, DefaultNotifPollInterval},
+		{"flag override takes precedence", "30s", 90 * time.Second, 90 * time.Second},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ETHOL_EMAIL", "dummy_user")
+			t.Setenv("ETHOL_PASSWORD", "dummy_pass")
+			if tc.envVal != "" {
+				t.Setenv("ETHOL_NOTIF_POLL_INTERVAL", tc.envVal)
+			} else {
+				t.Setenv("ETHOL_NOTIF_POLL_INTERVAL", "")
+			}
+
+			var override Config
+			if tc.override > 0 {
+				override.NotifPollInterval = tc.override
+			}
+
+			cfg, err := LoadConfig("", override)
+			if err != nil {
+				t.Fatalf("LoadConfig unexpected error: %v", err)
+			}
+			if cfg.NotifPollInterval != tc.expected {
+				t.Errorf("expected %v, got %v", tc.expected, cfg.NotifPollInterval)
 			}
 		})
 	}
