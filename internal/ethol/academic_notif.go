@@ -298,8 +298,11 @@ func (am *AcademicManager) StartNotificationPoller(
 	onOtherNotif func(kode, keterangan string),
 ) {
 	if interval <= 0 {
-		interval = 30 * time.Second
+		interval = 60 * time.Second
 	}
+
+	var consecutiveErrors int
+	const maxBackoffMultiplier = 8
 
 	ensureBaseline := func(pollCtx context.Context) error {
 		am.mu.RLock()
@@ -319,7 +322,7 @@ func (am *AcademicManager) StartNotificationPoller(
 		return err
 	}
 
-	poll := func() {
+	poll := func() time.Duration {
 		pollCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		defer cancel()
 
@@ -327,39 +330,56 @@ func (am *AcademicManager) StartNotificationPoller(
 		baselineDone := am.notifBaselineDone
 		am.mu.RUnlock()
 
+		var err error
 		if !baselineDone {
-			if err := ensureBaseline(pollCtx); err != nil {
+			if err = ensureBaseline(pollCtx); err != nil {
 				if !errors.Is(err, context.Canceled) {
 					slog.Warn("Notification poller baseline cycle failed", "error", err)
 				}
 			}
-			return
+		} else {
+			err = am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif, onOtherNotif)
+			if errors.Is(err, ErrUnauthorized) && ensureAuth != nil {
+				if reErr := ensureAuth(pollCtx); reErr == nil {
+					err = am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif, onOtherNotif)
+				} else {
+					err = reErr
+				}
+			}
+			if err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("Notification poller cycle failed", "error", err)
+			}
+			am.SweepExpired()
 		}
 
-		err := am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif, onOtherNotif)
-		if errors.Is(err, ErrUnauthorized) && ensureAuth != nil {
-			if reErr := ensureAuth(pollCtx); reErr == nil {
-				err = am.PollNotifications(pollCtx, onPresenceNotif, onTaskNotif, onOtherNotif)
-			} else {
-				err = reErr
-			}
+		now := time.Now()
+		if am.timeNow != nil {
+			now = am.timeNow()
 		}
+		if IsNightWIB(now) {
+			consecutiveErrors = 0
+			return calculatePollerInterval(interval * 10)
+		}
+
 		if err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("Notification poller cycle failed", "error", err)
+			consecutiveErrors++
+			multiplier := min(1<<consecutiveErrors, maxBackoffMultiplier)
+			return calculatePollerInterval(interval) * time.Duration(multiplier)
 		}
-		am.SweepExpired()
+
+		consecutiveErrors = 0
+		return calculatePollerInterval(interval)
 	}
 
-	poll()
-
+	nextInterval := poll()
 	for {
-		timer := time.NewTimer(calculatePollerInterval(interval))
+		timer := time.NewTimer(nextInterval)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			return
 		case <-timer.C:
-			poll()
+			nextInterval = poll()
 		}
 	}
 }

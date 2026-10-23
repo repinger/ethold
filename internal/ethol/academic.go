@@ -40,6 +40,7 @@ type AcademicManager struct {
 	notifHead             int
 	processedNotifContent map[string]time.Time
 	notifBaselineDone     bool
+	timeNow               func() time.Time
 }
 
 const (
@@ -59,6 +60,7 @@ func NewAcademicManager(client *http.Client, baseURL string, ttl time.Duration) 
 		client:            client,
 		baseURL:           strings.TrimRight(baseURL, "/"),
 		ttl:               ttl,
+		timeNow:           time.Now,
 		scheduleCache:     make(map[string]scheduleCacheEntry),
 		taskCache:         make(map[int]taskCacheEntry),
 		materialCache:     make(map[int]materialCacheEntry),

@@ -903,3 +903,81 @@ func TestAcademicManager_InitNotificationBaseline_TaskContentDedup(t *testing.T)
 		t.Errorf("expected 0 task calls because baseline already recorded content, got %d", taskCalls)
 	}
 }
+
+func TestStartNotificationPoller_ErrorBackoff(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		pollLogs []time.Time
+		failResp = true
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.URL.Path == "/api/notifikasi/mahasiswa-belum-baca" {
+			pollLogs = append(pollLogs, time.Now())
+			if failResp {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"jumlah":0}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	// Mark baseline done so error path comes from PollNotifications
+	am.mu.Lock()
+	am.notifBaselineDone = true
+	am.timeNow = func() time.Time {
+		return time.Date(2026, 10, 24, 10, 0, 0, 0, WIBLocation) // 10:00 WIB (daytime)
+	}
+	am.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Poller base interval 30ms.
+	// Attempt 0: fails -> consecutiveErrors=1, multiplier=2 -> next interval ~60ms
+	// Attempt 1: fails -> consecutiveErrors=2, multiplier=4 -> next interval ~120ms
+	// Attempt 2: fails -> consecutiveErrors=3, multiplier=8 -> next interval ~240ms
+	go am.StartNotificationPoller(ctx, 30*time.Millisecond, nil, nil, nil, nil)
+
+	// Wait for at least 3 failed polls
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		n := len(pollLogs)
+		mu.Unlock()
+		if n >= 3 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	logs := make([]time.Time, len(pollLogs))
+	copy(logs, pollLogs)
+	mu.Unlock()
+
+	if len(logs) < 3 {
+		t.Fatalf("expected at least 3 poll attempts, got %d", len(logs))
+	}
+
+	// Gap 1 should be shorter than Gap 2 because of backoff
+	gap1 := logs[1].Sub(logs[0])
+	gap2 := logs[2].Sub(logs[1])
+
+	// Allow jitter tolerance: gap2 (approx 120ms) should be strictly greater than gap1 (approx 60ms)
+	if gap2 <= gap1 {
+		t.Errorf("expected backoff interval to grow: gap1=%v, gap2=%v", gap1, gap2)
+	}
+}
