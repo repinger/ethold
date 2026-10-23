@@ -15,6 +15,12 @@ const (
 	WindowTrailTime    = 20 * time.Minute
 )
 
+// IsNightWIB reports whether t falls within off-peak night hours (22:00–06:00 WIB).
+func IsNightWIB(t time.Time) bool {
+	hour := t.In(WIBLocation).Hour()
+	return hour >= 22 || hour < 6
+}
+
 type ScanWindow struct {
 	Start   time.Time
 	End     time.Time

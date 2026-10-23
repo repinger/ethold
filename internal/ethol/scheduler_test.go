@@ -207,6 +207,34 @@ func TestCalculateJitter(t *testing.T) {
 	}
 }
 
+func TestIsNightWIB(t *testing.T) {
+	cases := []struct {
+		name     string
+		hour     int
+		minute   int
+		expected bool
+	}{
+		{"midnight (00:00 WIB) is night", 0, 0, true},
+		{"early morning (05:59 WIB) is night", 5, 59, true},
+		{"day start boundary (06:00 WIB) is daytime", 6, 0, false},
+		{"morning (08:30 WIB) is daytime", 8, 30, false},
+		{"afternoon (14:00 WIB) is daytime", 14, 0, false},
+		{"evening (21:59 WIB) is daytime", 21, 59, false},
+		{"night start boundary (22:00 WIB) is night", 22, 0, true},
+		{"late night (23:30 WIB) is night", 23, 30, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			timeVal := time.Date(2026, 10, 24, tc.hour, tc.minute, 0, 0, WIBLocation)
+			got := IsNightWIB(timeVal)
+			if got != tc.expected {
+				t.Errorf("hour=%02d:%02d WIB: expected %v, got %v", tc.hour, tc.minute, tc.expected, got)
+			}
+		})
+	}
+}
+
 func BenchmarkComputeScanWindows(b *testing.B) {
 	// ponytail: fixed 8 items, add varied day generators when dynamic schedule profiling needed
 	items := []ScheduleItem{
