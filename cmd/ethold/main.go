@@ -175,11 +175,12 @@ func run() error {
 		delay := 5 * time.Second
 		const maxDelay = 2 * time.Minute
 		for attempt := 1; ; attempt++ {
-			if _, err := auth.Login(ctx); err == nil {
+			_, loginErr := auth.Login(ctx)
+			if loginErr == nil {
 				close(authReady)
 				return
 			}
-			slog.Error("Initial CAS SSO login failed, retrying", "error", err, "attempt", attempt, "retry_in", delay)
+			slog.Error("Initial CAS SSO login failed, retrying", "error", loginErr, "attempt", attempt, "retry_in", delay)
 			select {
 			case <-ctx.Done():
 				return
