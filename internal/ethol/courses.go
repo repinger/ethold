@@ -111,7 +111,7 @@ func (cm *CourseManager) CacheAge() (time.Duration, bool) {
 
 func (cm *CourseManager) GetCourses(ctx context.Context) ([]Course, error) {
 	cm.mu.RLock()
-	if len(cm.cache) > 0 && time.Since(cm.lastUpdated) < cm.ttl {
+	if !cm.lastUpdated.IsZero() && time.Since(cm.lastUpdated) < cm.ttl {
 		courses := slices.Clone(cm.cache)
 		cm.mu.RUnlock()
 		return courses, nil
@@ -127,7 +127,7 @@ func (cm *CourseManager) Refresh(ctx context.Context) ([]Course, error) {
 	defer cm.refreshMu.Unlock()
 
 	cm.mu.RLock()
-	if len(cm.cache) > 0 && cm.lastUpdated.After(start) {
+	if !cm.lastUpdated.IsZero() && cm.lastUpdated.After(start) {
 		courses := slices.Clone(cm.cache)
 		cm.mu.RUnlock()
 		return courses, nil
@@ -159,13 +159,15 @@ func (cm *CourseManager) refreshLocked(ctx context.Context) ([]Course, error) {
 	if respConf.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
 	}
-	if respConf.StatusCode == http.StatusOK {
-		var conf authConfigResponse
-		if err := json.NewDecoder(io.LimitReader(respConf.Body, 64*1024)).Decode(&conf); err == nil {
-			tahun = parseCount(conf.TahunAktif)
-			semester = parseCount(conf.SemesterAktif)
-		}
+	if respConf.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch auth config failed: HTTP %d", respConf.StatusCode)
 	}
+	var conf authConfigResponse
+	if err := json.NewDecoder(io.LimitReader(respConf.Body, 64*1024)).Decode(&conf); err != nil {
+		return nil, fmt.Errorf("decode auth config: %w", err)
+	}
+	tahun = parseCount(conf.TahunAktif)
+	semester = parseCount(conf.SemesterAktif)
 
 	// 2. Fetch enrolled courses
 	coursesURL := fmt.Sprintf("%s/api/kuliah?tahun=%d&semester=%d", cm.baseURL, tahun, semester)

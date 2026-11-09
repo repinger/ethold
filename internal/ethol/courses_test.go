@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -193,5 +194,83 @@ func TestCourseName_Parsing(t *testing.T) {
 				t.Errorf("CourseName() = %q, want %q", got, tc.expected)
 			}
 		})
+	}
+}
+
+func TestCourseManager_EmptyCourseListCached(t *testing.T) {
+	var kuliahCalls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/auth/config":
+			w.Write([]byte(`{"tahun_aktif": "2026", "semester_aktif": "1"}`))
+		case "/api/kuliah":
+			atomic.AddInt32(&kuliahCalls, 1)
+			w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cm := NewCourseManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+
+	// First call: fetches from network
+	courses, err := cm.GetCourses(ctx)
+	if err != nil {
+		t.Fatalf("first GetCourses failed: %v", err)
+	}
+	if len(courses) != 0 {
+		t.Errorf("expected 0 courses, got %d", len(courses))
+	}
+	if calls := atomic.LoadInt32(&kuliahCalls); calls != 1 {
+		t.Fatalf("expected 1 network call, got %d", calls)
+	}
+
+	// Second call: must hit cache and NOT invoke network
+	courses2, err := cm.GetCourses(ctx)
+	if err != nil {
+		t.Fatalf("second GetCourses failed: %v", err)
+	}
+	if len(courses2) != 0 {
+		t.Errorf("expected 0 courses from cache, got %d", len(courses2))
+	}
+	if calls := atomic.LoadInt32(&kuliahCalls); calls != 1 {
+		t.Errorf("expected network calls to remain 1 (served from cache), got %d", calls)
+	}
+}
+
+func TestCourseManager_Refresh_AuthConfigNon200ReturnsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/auth/config":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 Internal Server Error"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cm := NewCourseManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+
+	_, err = cm.Refresh(ctx)
+	if err == nil {
+		t.Fatal("expected error when auth config returns 500, got nil")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("expected error message to mention 500, got: %v", err)
 	}
 }
