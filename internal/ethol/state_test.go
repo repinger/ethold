@@ -267,6 +267,37 @@ func TestStateManager_PruneOlderThan(t *testing.T) {
 	}
 }
 
+func TestStateManager_PreservesDateWithoutMetadata(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	sm, err := NewStateManager(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add record with only Key and Date (no CourseName, Dosen, or Time)
+	oldDate := time.Now().AddDate(0, 0, -100).Format("2006-01-02")
+	err = sm.AddRecord(PresenceRecord{
+		Key:  "raw-token-999",
+		Date: oldDate,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reopen StateManager with 30-day retention
+	sm2, err := NewStateManager(path, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Because Date was preserved in disk state, it must be successfully pruned
+	if sm2.Has("raw-token-999") {
+		t.Error("expected raw-token-999 to be pruned after reload with retentionDays=30")
+	}
+}
+
 
 func BenchmarkStateManager_CountWithPrefix(b *testing.B) {
 	sm := &StateManager{

@@ -227,7 +227,7 @@ func (sm *StateManager) saveLocked() error {
 	}
 	for k, rec := range sm.records {
 		sm.keyList = append(sm.keyList, k)
-		if rec.CourseName != "" || rec.Dosen != "" || rec.Time != "" {
+		if rec.CourseName != "" || rec.Dosen != "" || rec.Time != "" || rec.Date != "" {
 			sm.recs[k] = rec
 		}
 	}
