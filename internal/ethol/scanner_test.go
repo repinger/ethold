@@ -1261,3 +1261,124 @@ func TestScanner_AuthReady_ScanCourses(t *testing.T) {
 	}
 }
 
+func TestScanner_HandleScanError_ContextCanceled(t *testing.T) {
+	var notifyCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		notifyCalled = true
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	scanner := NewScanner(nil, nil, nil, nil, nil, notifier, 1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	scanner.handleScanError(ctx, context.Canceled)
+
+	if scanner.serverDown.Load() {
+		t.Error("expected serverDown to remain false on context.Canceled")
+	}
+	if notifyCalled {
+		t.Error("expected no telegram alert on context.Canceled")
+	}
+}
+
+func TestScanner_ScanCoursesInternal_MidCheckUnauthorizedReloadsStudentID(t *testing.T) {
+	var (
+		submitAttempts int32
+		receivedID     int32
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/auth/cas-redirect":
+			http.Redirect(w, r, "/cas/login?service=test", http.StatusFound)
+		case "/cas/login":
+			if r.Method == http.MethodGet {
+				w.Header().Set("Content-Type", "text/html")
+				fmt.Fprint(w, `<form id="fm1" action="/cas/login?service=test" method="post"><input type="hidden" name="lt" value="LT-1"/><input type="text" name="username"/><input type="password" name="password"/></form>`)
+				return
+			}
+			http.Redirect(w, r, "/api/auth/validasi-token", http.StatusFound)
+		case "/api/auth/validasi-token":
+			w.Write([]byte(`{"nomor":9999,"nama":"Refreshed Student","nipnrp":"3120600999"}`))
+		case "/api/auth/refresh":
+			w.WriteHeader(http.StatusUnauthorized)
+		case "/api/auth/config":
+			json.NewEncoder(w).Encode(map[string]any{"tahun_aktif": 2024, "semester_aktif": 1})
+		case "/api/kuliah":
+			json.NewEncoder(w).Encode([]map[string]any{{
+				"nomor":        101,
+				"jenis_schema": 1,
+				"dosen":        "Dr. Test",
+				"matakuliah":   "Sistem Operasi",
+			}})
+		case "/api/presensi/aktif-kuliah":
+			json.NewEncoder(w).Encode([]map[string]any{{"key": "reload-key"}})
+		case "/api/presensi/mahasiswa":
+			att := atomic.AddInt32(&submitAttempts, 1)
+			var payload struct {
+				Mahasiswa int `json:"mahasiswa"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			atomic.StoreInt32(&receivedID, int32(payload.Mahasiswa))
+			if att == 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"sukses": true, "pesan": "Berhasil"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	state, err := NewStateManager(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	auth := NewAuthManager(client, server.URL, "user", "pass")
+	courses := NewCourseManager(client, server.URL, 5*time.Minute)
+	presence := NewPresenceEngine(client, server.URL)
+
+	scanner := NewScanner(auth, courses, presence, nil, state, nil, 1)
+	scanner.minDelay, scanner.maxDelay = 0, 0
+	scanner.minStagger, scanner.maxStagger = 0, 0
+
+	// Initial user is nil
+	if auth.User() != nil {
+		t.Fatal("expected initial user to be nil")
+	}
+
+	ctx := context.Background()
+	attended, err := scanner.ScanOnce(ctx)
+	if err != nil {
+		t.Fatalf("ScanOnce failed: %v", err)
+	}
+	if attended != 1 {
+		t.Errorf("expected 1 attended course, got %d", attended)
+	}
+	if att := atomic.LoadInt32(&submitAttempts); att != 2 {
+		t.Errorf("expected 2 submission attempts (initial 401 + retry), got %d", att)
+	}
+	if id := atomic.LoadInt32(&receivedID); id != 9999 {
+		t.Errorf("expected retried submission to send updated studentID 9999, got %d", id)
+	}
+}
+

@@ -497,6 +497,9 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 		msg, isSuccess, submitErr := s.presence.Submit(ctx, res.course, res.key, studentID)
 		if errors.Is(submitErr, ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
+				if u := s.auth.User(); u != nil {
+					studentID = u.Nomor
+				}
 				msg, isSuccess, submitErr = s.presence.Submit(ctx, res.course, res.key, studentID)
 			}
 		}
@@ -537,7 +540,9 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 					}
 				}
 			}
-			_ = s.notifier.NotifyPresenceSuccess(ctx, res.course.CourseName(), res.course.Dosen, res.key, respText)
+			if s.notifier != nil {
+				_ = s.notifier.NotifyPresenceSuccess(ctx, res.course.CourseName(), res.course.Dosen, res.key, respText)
+			}
 			attendedCount++
 		} else {
 			slog.Warn("Presence response status not recognized as success", "course", res.course.CourseName(), "msg", msg)
@@ -673,7 +678,7 @@ func (s *Scanner) Run(ctx context.Context) error {
 }
 
 func (s *Scanner) handleScanError(ctx context.Context, err error) {
-	if s.notifier == nil || err == nil {
+	if s.notifier == nil || err == nil || errors.Is(err, context.Canceled) || ctx.Err() != nil {
 		return
 	}
 	if isAuthFailure(err) {
