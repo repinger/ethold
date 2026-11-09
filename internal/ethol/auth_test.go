@@ -489,6 +489,27 @@ func TestAuthManager_EnsureSession_ResetsCookiesOnExpiredSession(t *testing.T) {
 	}
 }
 
+func TestAuthManager_UserReturnsCopy(t *testing.T) {
+	auth := &AuthManager{
+		user: &UserInfo{
+			Nomor:  123,
+			Nama:   "Original Name",
+			NipNrp: "3120600001",
+		},
+	}
+
+	u := auth.User()
+	if u == nil {
+		t.Fatal("expected non-nil user")
+	}
+	u.Nama = "Mutated Name"
+
+	u2 := auth.User()
+	if u2.Nama != "Original Name" {
+		t.Errorf("User() allowed mutating internal state: got %q, want %q", u2.Nama, "Original Name")
+	}
+}
+
 func BenchmarkExtractCASForm(b *testing.B) {
 	htmlData := `
 <!DOCTYPE html>

@@ -52,7 +52,11 @@ func NewAuthManager(client *http.Client, baseURL, username, password string) *Au
 func (a *AuthManager) User() *UserInfo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.user
+	if a.user == nil {
+		return nil
+	}
+	u := *a.user
+	return &u
 }
 
 func (a *AuthManager) Login(ctx context.Context) (*UserInfo, error) {
