@@ -27,12 +27,33 @@ type ExamItem struct {
 	Pararel    string   `json:"pararel"`
 	Matakuliah any      `json:"matakuliah"`
 	Dosen      any      `json:"dosen"`
-	Ruang      string   `json:"ruang"`
+	Ruang      any      `json:"ruang"`
 	Ujian      ExamInfo `json:"ujian"`
+}
+
+func parseRoomNameVal(val any) string {
+	if val == nil {
+		return ""
+	}
+	if s, ok := val.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	if m, ok := val.(map[string]any); ok {
+		if nama, ok := m["nama"].(string); ok {
+			return strings.TrimSpace(nama)
+		}
+		if ruang, ok := m["ruang"].(string); ok {
+			return strings.TrimSpace(ruang)
+		}
+	}
+	return ""
 }
 
 func (ei ExamItem) CourseName() string {
 	return parseCourseNameVal(ei.Matakuliah)
+}
+func (ei ExamItem) RoomName() string {
+	return parseRoomNameVal(ei.Ruang)
 }
 
 func (ei ExamItem) LecturerName() string {
@@ -193,8 +214,8 @@ func (am *AcademicManager) FormatExamsText(ctx context.Context, tahun, semester 
 			}
 
 			sb.WriteString(fmt.Sprintf("• <b>%s</b>\n  🕒 %s", mk, waktuStr))
-			if it.Ruang != "" {
-				sb.WriteString(fmt.Sprintf(" | 📍 %s", html.EscapeString(it.Ruang)))
+			if ruang := it.RoomName(); ruang != "" {
+				sb.WriteString(fmt.Sprintf(" | 📍 %s", html.EscapeString(ruang)))
 			}
 			if dosen := it.LecturerName(); dosen != "" {
 				sb.WriteString(fmt.Sprintf(" | 👨‍🏫 %s", html.EscapeString(dosen)))

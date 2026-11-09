@@ -130,3 +130,74 @@ func TestAcademicManager_Exams(t *testing.T) {
 		t.Errorf("expected ErrUnauthorized, got: %v", err)
 	}
 }
+
+func TestAcademicManager_Exams_ObjectRuang(t *testing.T) {
+	rawJSON := `[
+		{
+			"nomor": 221584,
+			"matakuliah": {"nomor": 212806, "nama": "Workshop X"},
+			"dosen": {"nomor": 125, "nama": "Mr X", "gelar_blk": "S.ST., MT."},
+			"ruang": {"nomor": null, "nama": null},
+			"ujian": {
+				"nomor": 56740,
+				"mulai": "2026-10-14 08:50:00",
+				"selesai": "2026-10-14 11:20:00",
+				"mulai_indonesia": "Rabu, 14 Oktober 2026 - 08:50",
+				"selesai_indonesia": "Rabu, 14 Oktober 2026 - 11:20"
+			}
+		},
+		{
+			"nomor": 224077,
+			"matakuliah": {"nomor": 213017, "nama": "Kuliah Y"},
+			"dosen": {"nomor": 11, "nama": "Mr Y", "gelar_dpn": "Ir", "gelar_blk": " MT"},
+			"ruang": {"nomor": 105, "nama": "Lab Komputer"},
+			"ujian": {
+				"nomor": 57149,
+				"mulai": "2026-10-15 13:00:00",
+				"selesai": "2026-10-15 14:40:00",
+				"mulai_indonesia": "Kamis, 15 Oktober 2026 - 13:00",
+				"selesai_indonesia": "Kamis, 15 Oktober 2026 - 14:40"
+			}
+		}
+	]`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(rawJSON))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	ctx := context.Background()
+
+	items, err := am.GetExams(ctx, 2026, 1, 1)
+	if err != nil {
+		t.Fatalf("unexpected error decoding exams with object ruang: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+
+	if items[0].RoomName() != "" {
+		t.Errorf("expected empty RoomName for null ruang object, got %q", items[0].RoomName())
+	}
+	if items[1].RoomName() != "Lab Komputer" {
+		t.Errorf("expected 'Lab Komputer' RoomName, got %q", items[1].RoomName())
+	}
+
+	txt, err := am.FormatExamsText(ctx, 2026, 1)
+	if err != nil {
+		t.Fatalf("FormatExamsText error: %v", err)
+	}
+	if !strings.Contains(txt, "Lab Komputer") {
+		t.Errorf("expected output to contain 'Lab Komputer', got: %s", txt)
+	}
+	if !strings.Contains(txt, "Workshop X") {
+		t.Errorf("expected output to contain course name, got: %s", txt)
+	}
+}
