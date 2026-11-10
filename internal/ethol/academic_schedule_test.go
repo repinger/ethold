@@ -131,6 +131,17 @@ func TestAcademicManager_ScheduleClockAndEscaping(t *testing.T) {
 		}
 	}
 
+	// Test parseClockToTime with non-WIB base time (e.g. UTC timestamp on next day in WIB)
+	// Sep 9 2024 18:00 UTC is Sep 10 2024 01:00 WIB
+	utcBase := time.Date(2024, 9, 9, 18, 0, 0, 0, time.UTC)
+	tmUTC, err := parseClockToTime("08:30", utcBase)
+	if err != nil {
+		t.Fatalf("parseClockToTime with UTC base error: %v", err)
+	}
+	if tmUTC.Year() != 2024 || tmUTC.Month() != 9 || tmUTC.Day() != 10 {
+		t.Errorf("expected date 2024-09-10 in WIB, got %04d-%02d-%02d", tmUTC.Year(), tmUTC.Month(), tmUTC.Day())
+	}
+
 	// 2. Test FormatScheduleText escaping dayName
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

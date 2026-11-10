@@ -288,6 +288,7 @@ func (am *AcademicManager) FormatScheduleText(ctx context.Context, now time.Time
 }
 
 func parseClockToTime(clockStr string, base time.Time) (time.Time, error) {
+	base = base.In(WIBLocation)
 	s := strings.TrimSpace(clockStr)
 	sep := strings.IndexAny(s, ":.")
 	if sep <= 0 || sep+1 >= len(s) {
