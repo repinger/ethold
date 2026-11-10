@@ -43,12 +43,12 @@ type StateManager struct {
 
 func parseRecordDate(key string, rec PresenceRecord) (time.Time, bool) {
 	if rec.Date != "" {
-		if t, err := time.Parse("2006-01-02", rec.Date); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", rec.Date, WIBLocation); err == nil {
 			return t, true
 		}
 	}
 	if len(key) >= 10 && key[4] == '-' && key[7] == '-' {
-		if t, err := time.Parse("2006-01-02", key[:10]); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", key[:10], WIBLocation); err == nil {
 			return t, true
 		}
 	}
@@ -120,9 +120,10 @@ func NewStateManager(path string, retentionDays ...int) (*StateManager, error) {
 	}
 
 	if sm.retentionDays > 0 {
-		cutoff := time.Now().AddDate(0, 0, -sm.retentionDays)
+		now := NowWIB()
+		cutoff := now.AddDate(0, 0, -sm.retentionDays)
 		sm.pruneLocked(cutoff)
-		sm.lastPruneDate = time.Now().Format("2006-01-02")
+		sm.lastPruneDate = TodayDate(now)
 	}
 
 	return sm, nil
@@ -194,7 +195,7 @@ func (sm *StateManager) AddRecord(recs ...PresenceRecord) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	nowDate := time.Now().Format("2006-01-02")
+	nowDate := TodayDate(NowWIB())
 	for _, rec := range recs {
 		if rec.Date == "" {
 			if t, ok := parseRecordDate(rec.Key, rec); ok {
@@ -211,9 +212,10 @@ func (sm *StateManager) AddRecord(recs ...PresenceRecord) error {
 
 func (sm *StateManager) saveLocked() error {
 	if sm.retentionDays > 0 {
-		today := time.Now().Format("2006-01-02")
+		now := NowWIB()
+		today := TodayDate(now)
 		if today != sm.lastPruneDate {
-			cutoff := time.Now().AddDate(0, 0, -sm.retentionDays)
+			cutoff := now.AddDate(0, 0, -sm.retentionDays)
 			sm.pruneLocked(cutoff)
 			sm.lastPruneDate = today
 		}

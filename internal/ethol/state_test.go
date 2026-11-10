@@ -221,7 +221,7 @@ func TestStateManager_DailyPruneDeduplication(t *testing.T) {
 		t.Fatalf("NewStateManager failed: %v", err)
 	}
 
-	today := time.Now().Format("2006-01-02")
+	today := TodayDate(NowWIB())
 
 	// First AddRecord should trigger prune and set lastPruneDate
 	err = sm.AddRecord(PresenceRecord{Key: "today_rec", Date: today})
@@ -295,6 +295,37 @@ func TestStateManager_PreservesDateWithoutMetadata(t *testing.T) {
 	// Because Date was preserved in disk state, it must be successfully pruned
 	if sm2.Has("raw-token-999") {
 		t.Error("expected raw-token-999 to be pruned after reload with retentionDays=30")
+	}
+}
+
+func TestStateManager_AddRecord_UsesWIBDate(t *testing.T) {
+	origLocal := time.Local
+	defer func() { time.Local = origLocal }()
+	time.Local = time.FixedZone("UTC-12", -12*3600)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	sm, err := NewStateManager(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = sm.AddRecord(PresenceRecord{Key: "raw-session-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sm.mu.RLock()
+	rec, ok := sm.records["raw-session-key"]
+	sm.mu.RUnlock()
+	if !ok {
+		t.Fatal("record not found")
+	}
+
+	expectedDate := TodayDate(NowWIB())
+	if rec.Date != expectedDate {
+		t.Errorf("expected date %q (WIB), got %q", expectedDate, rec.Date)
 	}
 }
 
