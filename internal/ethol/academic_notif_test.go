@@ -292,6 +292,56 @@ func TestAcademicManager_PollNotifications_UnhandledCode(t *testing.T) {
 	}
 }
 
+func TestAcademicManager_PollNotifications_PresensiFallsBackToOtherNotif(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/notifikasi/mahasiswa-belum-baca":
+			w.Write([]byte(`{"jumlah":1}`))
+		case "/api/notifikasi/mahasiswa":
+			w.Write([]byte(`[
+				{
+					"idNotifikasi": 1001,
+					"kodeNotifikasi": "PRESENSI",
+					"keterangan": "Sesi presensi Basis Data dibuka",
+					"status": "1"
+				}
+			]`))
+		case "/api/notifikasi/mahasiswa-baca-notif":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	am := NewAcademicManager(client, server.URL, 5*time.Minute)
+	var (
+		otherTriggered bool
+		receivedKode   string
+		receivedKet    string
+	)
+	err = am.PollNotifications(context.Background(), nil, nil, func(kode, ket string) {
+		otherTriggered = true
+		receivedKode = kode
+		receivedKet = ket
+	})
+	if err != nil {
+		t.Fatalf("PollNotifications error: %v", err)
+	}
+	if !otherTriggered {
+		t.Fatal("expected onOtherNotif to be called when onPresenceNotif is nil")
+	}
+	if receivedKode != "PRESENSI" || receivedKet != "Sesi presensi Basis Data dibuka" {
+		t.Errorf("unexpected callback args: kode=%q ket=%q", receivedKode, receivedKet)
+	}
+}
+
 func TestAcademicManager_StartNotificationPoller_RetryAuth(t *testing.T) {
 	var (
 		pollAttempts   int32

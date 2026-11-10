@@ -252,10 +252,8 @@ func (am *AcademicManager) PollNotifications(
 		}
 
 		switch {
-		case strings.Contains(kode, "PRESENSI"):
-			if onPresenceNotif != nil {
-				onPresenceNotif(item.Keterangan)
-			}
+		case strings.Contains(kode, "PRESENSI") && onPresenceNotif != nil:
+			onPresenceNotif(item.Keterangan)
 		default:
 			if onOtherNotif != nil {
 				onOtherNotif(item.KodeNotifikasi, item.Keterangan)
