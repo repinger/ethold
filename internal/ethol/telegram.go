@@ -852,7 +852,7 @@ func parseCommand(text string) string {
 		if idx := strings.IndexByte(cmd, '@'); idx != -1 {
 			cmd = cmd[:idx]
 		}
-		return cmd
+		return strings.ToLower(cmd)
 	}
 	if cmd, ok := commandTextAliases[strings.ToLower(text)]; ok {
 		return cmd

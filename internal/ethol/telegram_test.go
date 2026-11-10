@@ -139,6 +139,12 @@ func TestTelegramNotifier_ParseCommand(t *testing.T) {
 		{"/status@EtholBot", "/status"},
 		{"/check now please", "/check"},
 		{"/ping", "/ping"},
+		{"/STATUS", "/status"},
+		{"/Status", "/status"},
+		{"/STATUS@EtholBot", "/status"},
+		{"/Check", "/check"},
+		{"/Jadwal", "/jadwal"},
+		{"/HELP", "/help"},
 		// Interactive emoji labels
 		{"📅 Jadwal", "/jadwal"},
 		{"📝 Tugas", "/tugas"},
