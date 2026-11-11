@@ -105,6 +105,7 @@ func run() error {
 	telegramNotifThreadID := flag.Int64("telegram-notif-thread-id", 0, "Telegram notification topic thread ID (forum supergroups)")
 	stateRetentionDays := flag.Int("state-retention-days", 0, "Days to retain presence state records (0 to use config default)")
 	notifPollInterval := flag.Duration("notif-poll-interval", 0, "Notification poll interval (e.g. 60s, 2m; 0 uses config default)")
+	insecureAllowExpiredCert := flag.Bool("insecure-allow-expired-cert", false, "Allow expired HTTPS certificates for *.pens.ac.id")
 	flag.Parse()
 
 	if *showVersion {
@@ -118,23 +119,29 @@ func run() error {
 	slog.Info("Starting ethold", "version", getVersion())
 
 	cfg, err := ethol.LoadConfig(*configPath, ethol.Config{
-		Username:                *username,
-		Password:                *password,
-		TelegramToken:           *telegramToken,
-		TelegramChatID:          *telegramChatID,
-		TelegramCommandThreadID: *telegramCommandThreadID,
-		TelegramNotifThreadID:   *telegramNotifThreadID,
-		NotifPollInterval:       *notifPollInterval,
+		Username:                 *username,
+		Password:                 *password,
+		TelegramToken:            *telegramToken,
+		TelegramChatID:           *telegramChatID,
+		TelegramCommandThreadID:  *telegramCommandThreadID,
+		TelegramNotifThreadID:    *telegramNotifThreadID,
+		InsecureAllowExpiredCert: *insecureAllowExpiredCert,
+		NotifPollInterval:        *notifPollInterval,
 	})
 	if err != nil {
 		slog.Error("Failed to load configuration", "path", *configPath, "error", err)
 		return err
 	}
 
-	client, err := ethol.NewHTTPClient()
+	client, err := ethol.NewHTTPClient(ethol.ClientConfig{
+		InsecureAllowExpiredCert: cfg.InsecureAllowExpiredCert,
+	})
 	if err != nil {
 		slog.Error("Failed to create HTTP client", "error", err)
 		return err
+	}
+	if cfg.InsecureAllowExpiredCert {
+		slog.Warn("insecure expired certificate bypass enabled for pens.ac.id")
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
