@@ -222,6 +222,5 @@ AI agents MUST load applicable skills before inspecting, editing, or testing cod
 ### Commit Standards
 - Style: `subsystem: imperative summary` (maximum 50 characters).
 - Body: Detail technical solution and rationale, wrapped at 72 columns.
-- AI agents MUST NOT append `Signed-off-by` tags.
-- AI-assisted commits MUST include:
-  `Assisted-by: <model-name> <tool>`
+- AI agents MUST NOT append `Signed-off-by` tags (reserved for human DCO certification).
+- AI agents MUST NOT append `Assisted-by` trailer tags (deprecated upstream; disclose tool usage in PR description or cover letter instead).
