@@ -171,6 +171,39 @@ func TestLoadConfigAutoPresence(t *testing.T) {
 	}
 }
 
+func TestLoadConfigInsecureAllowExpiredCert(t *testing.T) {
+	cases := []struct {
+		name     string
+		envVal   string
+		override bool
+		expected bool
+	}{
+		{"default false", "", false, false},
+		{"false string", "false", false, false},
+		{"zero string", "0", false, false},
+		{"true string", "true", false, true},
+		{"one string", "1", false, true},
+		{"yes string", "yes", false, true},
+		{"flag override takes precedence", "false", true, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ETHOL_EMAIL", "dummy_user")
+			t.Setenv("ETHOL_PASSWORD", "dummy_pass")
+			t.Setenv("ETHOL_INSECURE_ALLOW_EXPIRED_CERT", tc.envVal)
+
+			cfg, err := LoadConfig("", Config{InsecureAllowExpiredCert: tc.override})
+			if err != nil {
+				t.Fatalf("LoadConfig unexpected error: %v", err)
+			}
+			if cfg.InsecureAllowExpiredCert != tc.expected {
+				t.Errorf("expected %v, got %v", tc.expected, cfg.InsecureAllowExpiredCert)
+			}
+		})
+	}
+}
+
 func TestLoadConfigNotifPollInterval(t *testing.T) {
 	cases := []struct {
 		name     string

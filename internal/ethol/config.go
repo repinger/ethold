@@ -12,15 +12,16 @@ import (
 )
 
 type Config struct {
-	Username                string
-	Password                string
-	TelegramToken           string
-	TelegramChatID          string
-	TelegramCommandThreadID int64
-	TelegramNotifThreadID   int64
-	AutoPresence            bool
-	StateRetentionDays      int
-	NotifPollInterval       time.Duration
+	Username                 string
+	Password                 string
+	TelegramToken            string
+	TelegramChatID           string
+	TelegramCommandThreadID  int64
+	TelegramNotifThreadID    int64
+	AutoPresence             bool
+	InsecureAllowExpiredCert bool
+	StateRetentionDays       int
+	NotifPollInterval        time.Duration
 }
 
 // DefaultNotifPollInterval is the default duration between notification polling cycles.
@@ -135,15 +136,16 @@ func LoadConfig(path string, overrides ...Config) (*Config, error) {
 	}
 
 	cfg := &Config{
-		Username:                resolveValue(override.Username, "ETHOL_EMAIL", env),
-		Password:                resolveValue(override.Password, "ETHOL_PASSWORD", env),
-		TelegramToken:           resolveValue(override.TelegramToken, "TELEGRAM_TOKEN", env),
-		TelegramChatID:          resolveValue(override.TelegramChatID, "TELEGRAM_CHAT_ID", env),
-		TelegramCommandThreadID: resolveInt64(override.TelegramCommandThreadID, "TELEGRAM_COMMAND_THREAD_ID", env),
-		TelegramNotifThreadID:   resolveInt64(override.TelegramNotifThreadID, "TELEGRAM_NOTIF_THREAD_ID", env),
-		AutoPresence:            override.AutoPresence || parseBool(resolveValue("", "ETHOL_AUTO_PRESENCE", env)),
-		StateRetentionDays:      resolveInt(override.StateRetentionDays, "ETHOL_STATE_RETENTION_DAYS", env, DefaultRetentionDays),
-		NotifPollInterval:       resolveDuration(override.NotifPollInterval, "ETHOL_NOTIF_POLL_INTERVAL", env, DefaultNotifPollInterval),
+		Username:                 resolveValue(override.Username, "ETHOL_EMAIL", env),
+		Password:                 resolveValue(override.Password, "ETHOL_PASSWORD", env),
+		TelegramToken:            resolveValue(override.TelegramToken, "TELEGRAM_TOKEN", env),
+		TelegramChatID:           resolveValue(override.TelegramChatID, "TELEGRAM_CHAT_ID", env),
+		TelegramCommandThreadID:  resolveInt64(override.TelegramCommandThreadID, "TELEGRAM_COMMAND_THREAD_ID", env),
+		TelegramNotifThreadID:    resolveInt64(override.TelegramNotifThreadID, "TELEGRAM_NOTIF_THREAD_ID", env),
+		AutoPresence:             override.AutoPresence || parseBool(resolveValue("", "ETHOL_AUTO_PRESENCE", env)),
+		InsecureAllowExpiredCert: override.InsecureAllowExpiredCert || parseBool(resolveValue("", "ETHOL_INSECURE_ALLOW_EXPIRED_CERT", env)),
+		StateRetentionDays:       resolveInt(override.StateRetentionDays, "ETHOL_STATE_RETENTION_DAYS", env, DefaultRetentionDays),
+		NotifPollInterval:        resolveDuration(override.NotifPollInterval, "ETHOL_NOTIF_POLL_INTERVAL", env, DefaultNotifPollInterval),
 	}
 
 	if cfg.Username == "" || cfg.Password == "" {
