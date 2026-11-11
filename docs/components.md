@@ -58,10 +58,11 @@ This file configures the underlying HTTP transport for all network communication
 - **Browser Profile:** Selects a realistic browser header profile on startup (Chrome, Firefox, Safari, or Edge) and rotates it periodically every 12–24 hours with jitter.
 - **Header Injection:** Wraps transport with `headerTransport` to add `User-Agent`, `Accept-Language`, `Origin`, `Referer`, and `Sec-CH-UA` headers to target hosts.
 - **Connection Pooling:** Configures up to 64 idle connections (32 per host), 90-second idle timeout, 30-second total request timeout.
+- **TLS Expiry Bypass (Optional):** When `InsecureAllowExpiredCert` is enabled, uses `VerifyConnection` to validate CA trust chain and hostname while tolerating expired certificates exclusively for `pens.ac.id` / `*.pens.ac.id`.
 
 ### Primary Functions
 
-- `NewHTTPClient() (*http.Client, error)`: Returns a configured client instance with shared cookie jar and custom transport.
+- `NewHTTPClient(cfg ...ClientConfig) (*http.Client, error)`: Returns a configured client instance with shared cookie jar and custom transport.
 
 ---
 

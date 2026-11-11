@@ -39,6 +39,7 @@ The table below lists all supported environment variables:
 | `ETHOL_AUTO_PRESENCE`        | No       | `false` | Enables automated attendance scanning and submission (`true`, `1`, `yes`). Disabled by default. |
 | `ETHOL_STATE_RETENTION_DAYS` | No       | `90`    | Retention window in days for state records (0 disables auto-pruning).                           |
 | `ETHOL_NOTIF_POLL_INTERVAL`  | No       | `60s`   | Interval for academic notification polling (Go duration, e.g. `60s`, `2m`).                     |
+| `ETHOL_INSECURE_ALLOW_EXPIRED_CERT` | No | `false` | Allows expired HTTPS certificates for `*.pens.ac.id` while still verifying CA chain and hostname (`true`, `1`, `yes`). |
 | `LOG_LEVEL`                 | No       | `info` (release) / `debug` (dev) | Log verbosity level: `debug`, `info`, `warn`, or `error`.                                      |
 
 > **Note:** Both `ETHOL_EMAIL` and `ETHOL_PASSWORD` are required (via flag, system env, or file).
@@ -81,6 +82,7 @@ You can control the application using command line flags:
 | `--once`             | `false`              | Run a single scan pass and exit immediately.                          |
 | `--concurrency`      | `4`                  | Number of worker goroutines for course checks.                        |
 | `--notif-poll-interval`         | `60s`                | Notification poll interval (0 uses config/default).                   |
+| `--insecure-allow-expired-cert` | `false`              | Allow expired HTTPS certificates for `*.pens.ac.id`.                  |
 | `--version`          | `false`              | Print program version and exit.                                       |
 
 ### Example Flag Commands
