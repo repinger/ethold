@@ -1,6 +1,9 @@
 package ethol
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -149,6 +152,68 @@ func isTargetHost(host string) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "pens.ac.id" || strings.HasSuffix(host, ".pens.ac.id")
 }
 
+func isPENSHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == "pens.ac.id" || strings.HasSuffix(host, ".pens.ac.id")
+}
+
+// ClientConfig holds optional settings for NewHTTPClient.
+type ClientConfig struct {
+	InsecureAllowExpiredCert bool
+	RootCAs                  *x509.CertPool
+}
+
+func newVerifyConnection(allowExpiredCert bool, rootCAs *x509.CertPool) func(tls.ConnectionState) error {
+	return func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) == 0 {
+			return errors.New("tls: no certificates presented by peer")
+		}
+
+		opts := x509.VerifyOptions{
+			DNSName: cs.ServerName,
+			Roots:   rootCAs,
+		}
+		if len(cs.PeerCertificates) > 1 {
+			opts.Intermediates = x509.NewCertPool()
+			for _, cert := range cs.PeerCertificates[1:] {
+				opts.Intermediates.AddCert(cert)
+			}
+		}
+
+		leaf := cs.PeerCertificates[0]
+		_, err := leaf.Verify(opts)
+		if err == nil {
+			return nil
+		}
+
+		if !allowExpiredCert || !isPENSHost(cs.ServerName) {
+			return err
+		}
+
+		var certErr x509.CertificateInvalidError
+		if !errors.As(err, &certErr) || certErr.Reason != x509.Expired {
+			return err
+		}
+
+		expiredCert := certErr.Cert
+		if expiredCert == nil {
+			expiredCert = leaf
+		}
+		now := time.Now()
+		if !now.After(expiredCert.NotAfter) || now.Before(expiredCert.NotBefore) || !expiredCert.NotAfter.After(expiredCert.NotBefore) {
+			return err
+		}
+
+		optsExpired := opts
+		optsExpired.CurrentTime = expiredCert.NotAfter.Add(-time.Second)
+		if _, verifyErr := leaf.Verify(optsExpired); verifyErr != nil {
+			return verifyErr
+		}
+
+		return nil
+	}
+}
+
 func randomBrowserProfile() browserProfile {
 	return browserProfiles[rand.IntN(len(browserProfiles))]
 }
@@ -189,7 +254,12 @@ func (s *syncCookieJar) Reset() error {
 	return nil
 }
 
-func NewHTTPClient() (*http.Client, error) {
+func NewHTTPClient(cfg ...ClientConfig) (*http.Client, error) {
+	var c ClientConfig
+	if len(cfg) > 0 {
+		c = cfg[0]
+	}
+
 	jar, err := newSyncCookieJar()
 	if err != nil {
 		return nil, err
@@ -206,6 +276,19 @@ func NewHTTPClient() (*http.Client, error) {
 		MaxIdleConnsPerHost: 6,
 		IdleConnTimeout:     45 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
+	}
+	if c.InsecureAllowExpiredCert {
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			//nolint:gosec // G402: VerifyConnection enforces full CA chain and hostname verification, bypassing expiry only for *.pens.ac.id.
+			InsecureSkipVerify: true,
+			VerifyConnection:   newVerifyConnection(true, c.RootCAs),
+		}
+	} else if c.RootCAs != nil {
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    c.RootCAs,
+		}
 	}
 
 	return &http.Client{
