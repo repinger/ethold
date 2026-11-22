@@ -1,4 +1,4 @@
-package ethol
+package daemon
 
 import (
 	"context"
@@ -11,6 +11,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/repinger/ethold/internal/ethol"
+	"github.com/repinger/ethold/internal/telegram"
 )
 
 var ErrAutoPresenceDisabled = errors.New("auto-presence is disabled")
@@ -21,7 +24,7 @@ type ScannerStatus struct {
 	LastScanDuration time.Duration
 	LastScanErr      error
 	LastAttended     int
-	ScanPlan         ScanPlan
+	ScanPlan         ethol.ScanPlan
 	TotalAttended    int
 	TodayAttended    int
 	Paused           bool
@@ -30,7 +33,7 @@ type ScannerStatus struct {
 	MaxDelay         time.Duration
 	MinStagger       time.Duration
 	MaxStagger       time.Duration
-	User             *UserInfo
+	User             *ethol.UserInfo
 	ActiveCourse     string
 	CourseCount      int
 	Goroutines       int
@@ -44,23 +47,23 @@ type commandState struct {
 }
 
 type Scanner struct {
-	auth         *AuthManager
-	courses      *CourseManager
-	presence     *PresenceEngine
-	academic     *AcademicManager
+	auth         *ethol.AuthManager
+	courses      *ethol.CourseManager
+	presence     *ethol.PresenceEngine
+	academic     *ethol.AcademicManager
 	state        *StateManager
-	notifier     *TelegramNotifier
+	notifier     *telegram.Notifier
 	concurr      int
 	lastMode     string
 	startTime    time.Time
 	scanMu       sync.Mutex
-	queueBuf     []Course
+	queueBuf     []ethol.Course
 	statusMu     sync.RWMutex
 	lastScanTime time.Time
 	lastScanDur  time.Duration
 	lastScanErr  error
 	lastAttended int
-	currentPlan  ScanPlan
+	currentPlan  ethol.ScanPlan
 	paused       atomic.Bool
 	minDelay     time.Duration
 	maxDelay     time.Duration
@@ -76,12 +79,12 @@ type Scanner struct {
 }
 
 func NewScanner(
-	auth *AuthManager,
-	courses *CourseManager,
-	presence *PresenceEngine,
-	academic *AcademicManager,
+	auth *ethol.AuthManager,
+	courses *ethol.CourseManager,
+	presence *ethol.PresenceEngine,
+	academic *ethol.AcademicManager,
 	state *StateManager,
-	notifier *TelegramNotifier,
+	notifier *telegram.Notifier,
 	concurrency int,
 ) *Scanner {
 	if concurrency <= 0 {
@@ -141,7 +144,7 @@ func (s *Scanner) Status() ScannerStatus {
 	s.statusMu.RUnlock()
 
 	if plan.Interval == 0 {
-		plan = NextScanPlan(NowWIB(), nil)
+		plan = ethol.NextScanPlan(ethol.NowWIB(), nil)
 	}
 
 	minD, maxD := s.PresenceDelay()
@@ -151,10 +154,10 @@ func (s *Scanner) Status() ScannerStatus {
 	todayAttended := 0
 	if s.state != nil {
 		totalAttended = s.state.Count()
-		todayAttended = s.state.CountWithPrefix(TodayDate(NowWIB()))
+		todayAttended = s.state.CountWithPrefix(ethol.TodayDate(ethol.NowWIB()))
 	}
 
-	var user *UserInfo
+	var user *ethol.UserInfo
 	if s.auth != nil {
 		user = s.auth.User()
 	}
@@ -166,7 +169,7 @@ func (s *Scanner) Status() ScannerStatus {
 		if s.academic != nil {
 			if y, sem, ok := s.courses.CachedActivePeriod(); ok {
 				cachedCourses := s.courses.CachedCourses()
-				if active := s.academic.CachedActiveCourse(NowWIB(), y, sem, cachedCourses); active != nil {
+				if active := s.academic.CachedActiveCourse(ethol.NowWIB(), y, sem, cachedCourses); active != nil {
 					activeCourse = active.CourseName()
 				}
 			}
@@ -200,7 +203,7 @@ func (s *Scanner) NotifyStarting(ctx context.Context, version string) error {
 		return nil
 	}
 	status := s.Status()
-	msgID, err := s.notifier.NotifyStarting(ctx, StartupInfo{
+	msgID, err := s.notifier.NotifyStarting(ctx, telegram.StartupInfo{
 		Version:      version,
 		AutoPresence: s.presence != nil,
 		WorkerCount:  status.WorkerCount,
@@ -216,9 +219,16 @@ func (s *Scanner) NotifyStartup(ctx context.Context, version string) error {
 		return nil
 	}
 	status := s.Status()
-	return s.notifier.NotifyStartup(ctx, StartupInfo{
+	var user *telegram.StartupUser
+	if status.User != nil {
+		user = &telegram.StartupUser{
+			Nama:   status.User.Nama,
+			NipNrp: status.User.NipNrp,
+		}
+	}
+	return s.notifier.NotifyStartup(ctx, telegram.StartupInfo{
 		Version:       version,
-		User:          status.User,
+		User:          user,
 		AutoPresence:  s.presence != nil,
 		WorkerCount:   status.WorkerCount,
 		TotalRecords:  status.TotalAttended,
@@ -274,14 +284,14 @@ func (s *Scanner) calculateWorkerStagger() time.Duration {
 }
 
 func (s *Scanner) calculateScanInterval(base time.Duration) time.Duration {
-	return calculateJitter(base, 0.15)
+	return ethol.CalculateJitter(base, 0.15)
 }
 
-func prepareCourseQueue(dst []Course, courses []Course, activeNomor int) []Course {
+func prepareCourseQueue(dst []ethol.Course, courses []ethol.Course, activeNomor int) []ethol.Course {
 	if cap(dst) >= len(courses) {
 		dst = dst[:len(courses)]
 	} else {
-		dst = make([]Course, len(courses))
+		dst = make([]ethol.Course, len(courses))
 	}
 	copy(dst, courses)
 	if len(dst) <= 1 {
@@ -320,7 +330,7 @@ func (s *Scanner) TryScanOnce(ctx context.Context) (int, bool, error) {
 	return s.TryScanCourses(ctx, nil)
 }
 
-func (s *Scanner) TryScanCourses(ctx context.Context, targetCourses []Course) (int, bool, error) {
+func (s *Scanner) TryScanCourses(ctx context.Context, targetCourses []ethol.Course) (int, bool, error) {
 	if s.presence == nil {
 		return 0, false, ErrAutoPresenceDisabled
 	}
@@ -347,7 +357,7 @@ func (s *Scanner) TryScanCourses(ctx context.Context, targetCourses []Course) (i
 	return attended, false, err
 }
 
-func (s *Scanner) ScanCourses(ctx context.Context, targetCourses []Course) (int, error) {
+func (s *Scanner) ScanCourses(ctx context.Context, targetCourses []ethol.Course) (int, error) {
 	if s.presence == nil {
 		return 0, ErrAutoPresenceDisabled
 	}
@@ -372,12 +382,12 @@ func (s *Scanner) ScanCourses(ctx context.Context, targetCourses []Course) (int,
 	return attended, err
 }
 
-func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Course) (int, error) {
+func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []ethol.Course) (int, error) {
 	if err := s.auth.EnsureSession(ctx); err != nil {
 		return 0, fmt.Errorf("ensure session: %w", err)
 	}
 
-	var courses []Course
+	var courses []ethol.Course
 	if len(targetCourses) > 0 {
 		courses = targetCourses
 	} else {
@@ -395,7 +405,7 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 	activeNomor := 0
 	if s.academic != nil {
 		tahun, semester, _ := s.courses.ActivePeriod(ctx)
-		if active := s.academic.GetActiveCourse(ctx, NowWIB(), tahun, semester, courses); active != nil {
+		if active := s.academic.GetActiveCourse(ctx, ethol.NowWIB(), tahun, semester, courses); active != nil {
 			activeNomor = active.Nomor
 		}
 	}
@@ -403,13 +413,13 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 	courseQueue := s.queueBuf
 
 	type checkResult struct {
-		course Course
+		course ethol.Course
 		key    string
 		open   bool
 		err    error
 	}
 
-	jobs := make(chan Course, len(courseQueue))
+	jobs := make(chan ethol.Course, len(courseQueue))
 	results := make(chan checkResult, len(courseQueue))
 
 	var wg sync.WaitGroup
@@ -434,7 +444,7 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 					}
 				}
 				key, open, err := s.presence.CheckCourse(ctx, c)
-				if errors.Is(err, ErrUnauthorized) {
+				if errors.Is(err, ethol.ErrUnauthorized) {
 					// Session expired mid-check: re-login and retry once
 					if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 						key, open, err = s.presence.CheckCourse(ctx, c)
@@ -458,7 +468,7 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 	}
 
 	attendedCount := 0
-	todayStr := TodayDate(NowWIB())
+	todayStr := ethol.TodayDate(ethol.NowWIB())
 
 	for res := range results {
 		if res.err != nil {
@@ -495,7 +505,7 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 		}
 
 		msg, isSuccess, submitErr := s.presence.Submit(ctx, res.course, res.key, studentID)
-		if errors.Is(submitErr, ErrUnauthorized) {
+		if errors.Is(submitErr, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				if u := s.auth.User(); u != nil {
 					studentID = u.Nomor
@@ -511,7 +521,7 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 
 		if isSuccess {
 			slog.Info("Presence recorded successfully", "course", res.course.CourseName(), "msg", msg)
-			timeStr := NowWIB().Format("15:04")
+			timeStr := ethol.NowWIB().Format("15:04")
 			rec := PresenceRecord{
 				Key:        todayKey,
 				CourseName: res.course.CourseName(),
@@ -562,50 +572,50 @@ func (s *Scanner) scanCoursesInternal(ctx context.Context, targetCourses []Cours
 	return attendedCount, nil
 }
 
-func (s *Scanner) computeScanPlan(ctx context.Context, now time.Time) ScanPlan {
+func (s *Scanner) computeScanPlan(ctx context.Context, now time.Time) ethol.ScanPlan {
 	if s.academic == nil || s.courses == nil {
-		return NextScanPlan(now, nil)
+		return ethol.NextScanPlan(now, nil)
 	}
 
 	tahun, semester, err := s.courses.ActivePeriod(ctx)
-	if errors.Is(err, ErrUnauthorized) && s.auth != nil {
+	if errors.Is(err, ethol.ErrUnauthorized) && s.auth != nil {
 		if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 			tahun, semester, err = s.courses.ActivePeriod(ctx)
 		}
 	}
 	if err != nil {
 		slog.Warn("Failed to get active period for scan plan", "error", err)
-		return NextScanPlan(now, nil)
+		return ethol.NextScanPlan(now, nil)
 	}
 
 	items, err := s.academic.GetSchedule(ctx, tahun, semester)
-	if errors.Is(err, ErrUnauthorized) && s.auth != nil {
+	if errors.Is(err, ethol.ErrUnauthorized) && s.auth != nil {
 		if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 			items, err = s.academic.GetSchedule(ctx, tahun, semester)
 		}
 	}
 	if err != nil {
 		slog.Warn("Failed to get schedule for scan plan, falling back to active interval", "error", err)
-		return ScanPlan{
-			Interval: ActiveInterval,
+		return ethol.ScanPlan{
+			Interval: ethol.ActiveInterval,
 			Courses:  nil,
 			InWindow: false,
 		}
 	}
 
 	courses, err := s.courses.GetCourses(ctx)
-	if errors.Is(err, ErrUnauthorized) && s.auth != nil {
+	if errors.Is(err, ethol.ErrUnauthorized) && s.auth != nil {
 		if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 			courses, err = s.courses.GetCourses(ctx)
 		}
 	}
 	if err != nil {
 		slog.Warn("Failed to get courses for scan plan", "error", err)
-		return NextScanPlan(now, nil)
+		return ethol.NextScanPlan(now, nil)
 	}
 
-	windows := ComputeScanWindows(items, courses, now)
-	return NextScanPlan(now, windows)
+	windows := ethol.ComputeScanWindows(items, courses, now)
+	return ethol.NextScanPlan(now, windows)
 }
 
 func (s *Scanner) Run(ctx context.Context) error {
@@ -629,7 +639,7 @@ func (s *Scanner) Run(ctx context.Context) error {
 		default:
 		}
 
-		now := NowWIB()
+		now := ethol.NowWIB()
 		plan := s.computeScanPlan(ctx, now)
 
 		s.statusMu.Lock()
@@ -663,7 +673,7 @@ func (s *Scanner) Run(ctx context.Context) error {
 		}
 
 		waitInterval := plan.Interval
-		if plan.InWindow || plan.Interval >= BackgroundInterval {
+		if plan.InWindow || plan.Interval >= ethol.BackgroundInterval {
 			waitInterval = s.calculateScanInterval(plan.Interval)
 		}
 
@@ -703,7 +713,7 @@ func isAuthFailure(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, ErrUnauthorized) {
+	if errors.Is(err, ethol.ErrUnauthorized) {
 		return true
 	}
 	errStr := strings.ToLower(err.Error())

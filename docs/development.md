@@ -96,7 +96,7 @@ Measure execution duration and heap allocations across critical paths:
 
 Run all benchmarks:
 ```bash
-go test -run='^$' -bench=. -benchmem ./internal/ethol
+go test -run='^$' -bench=. -benchmem ./...
 ```
 
 Run a specific benchmark:
@@ -118,8 +118,7 @@ npx skills experimental_install
 ## Coding Conventions
 
 Adhere to these rules when making changes:
-- Keep all domain logic in the single `internal/ethol` package.
-- Do not create sub-packages under `internal/`.
+- Keep code organized within `internal/ethol`, `internal/telegram`, and `internal/daemon`.
 - Minimize external dependencies. Use the Go standard library first.
 - Write tests beside each source file using the `_test.go` naming convention.
 - Use `t.TempDir()` to create isolated directories for state tests.

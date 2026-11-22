@@ -1,4 +1,4 @@
-package ethol
+package daemon
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"html"
 	"strings"
 	"time"
+
+	"github.com/repinger/ethold/internal/ethol"
 )
 
 func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string {
@@ -83,7 +85,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			resultStr = "Tidak aktif"
 		} else if !status.LastScanTime.IsZero() {
 			durStr := status.LastScanDuration.Round(time.Millisecond).String()
-			lastScanStr = fmt.Sprintf("%s (%s)", status.LastScanTime.In(WIBLocation).Format("15:04:05 WIB"), durStr)
+			lastScanStr = fmt.Sprintf("%s (%s)", status.LastScanTime.In(ethol.WIBLocation).Format("15:04:05 WIB"), durStr)
 			resultStr = formatScanOutcome(status.LastScanErr, status.LastAttended)
 		}
 
@@ -158,11 +160,11 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		)
 
 	case "/courses":
-		loadCourses := func() ([]Course, error) {
+		loadCourses := func() ([]ethol.Course, error) {
 			return s.courses.GetCourses(ctx)
 		}
 		courses, err := loadCourses()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				courses, err = loadCourses()
 			}
@@ -185,7 +187,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 		if s.presence == nil || s.state == nil {
 			return "⚠️ <b>Auto-presensi tidak aktif.</b>"
 		}
-		todayStr := TodayDate(NowWIB())
+		todayStr := ethol.TodayDate(ethol.NowWIB())
 		todayRecs := s.state.RecordsWithPrefix(todayStr + "_")
 		if len(todayRecs) == 0 {
 			return fmt.Sprintf("📅 <b>Presensi Hari Ini (%s):</b>\nBelum ada presensi yang tercatat hari ini.", todayStr)
@@ -242,10 +244,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			if err != nil {
 				return "", err
 			}
-			return s.academic.FormatScheduleText(ctx, NowWIB(), tahun, semester)
+			return s.academic.FormatScheduleText(ctx, ethol.NowWIB(), tahun, semester)
 		}
 		msg, err := loadJadwal()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				msg, err = loadJadwal()
 			}
@@ -267,7 +269,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return s.academic.FormatExamsText(ctx, tahun, semester)
 		}
 		msg, err := loadUjian()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				msg, err = loadUjian()
 			}
@@ -289,7 +291,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return s.academic.FormatTasksText(ctx, courses)
 		}
 		msg, err := loadTugas()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				msg, err = loadTugas()
 			}
@@ -311,7 +313,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return s.academic.FormatMaterialsText(ctx, courses)
 		}
 		msg, err := loadMateri()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				msg, err = loadMateri()
 			}
@@ -329,7 +331,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return s.academic.FormatAnnouncementsText(ctx)
 		}
 		msg, err := loadPengumuman()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				msg, err = loadPengumuman()
 			}
@@ -368,7 +370,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 				if checkErr == nil && open && key != "" {
 					attendees, absentees, total, rErr := s.academic.GetAttendanceRoster(ctx, c, key)
 					if rErr == nil {
-						activeReports = append(activeReports, FormatRosterText(c, key, attendees, absentees, total))
+						activeReports = append(activeReports, ethol.FormatRosterText(c, key, attendees, absentees, total))
 					}
 				}
 			}
@@ -378,7 +380,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return strings.Join(activeReports, "\n\n───────────────\n\n"), nil
 		}
 		msg, err := loadRoster()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				msg, err = loadRoster()
 			}
@@ -416,10 +418,10 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			if err != nil {
 				return "", err
 			}
-			return s.academic.FormatAttendanceStatsText(ctx, NowWIB(), tahun, semester, studentID, courses)
+			return s.academic.FormatAttendanceStatsText(ctx, ethol.NowWIB(), tahun, semester, studentID, courses)
 		}
 		msg, err := loadRekap()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				msg, err = loadRekap()
 			}
@@ -441,7 +443,7 @@ func (s *Scanner) HandleTelegramCommand(ctx context.Context, cmd string) string 
 			return s.academic.FormatCourseRosterText(ctx, courses)
 		}
 		msg, err := loadPeserta()
-		if errors.Is(err, ErrUnauthorized) {
+		if errors.Is(err, ethol.ErrUnauthorized) {
 			if reErr := s.auth.EnsureSession(ctx); reErr == nil {
 				msg, err = loadPeserta()
 			}
@@ -505,4 +507,3 @@ func formatScanOutcome(err error, attended int) string {
 	}
 	return fmt.Sprintf("✅ Berhasil (%d sesi baru)", attended)
 }
-

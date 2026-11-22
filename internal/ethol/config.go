@@ -24,6 +24,9 @@ type Config struct {
 	NotifPollInterval        time.Duration
 }
 
+// DefaultRetentionDays is the default duration for state record retention (approx 1 semester).
+const DefaultRetentionDays = 90
+
 // DefaultNotifPollInterval is the default duration between notification polling cycles.
 const DefaultNotifPollInterval = 60 * time.Second
 

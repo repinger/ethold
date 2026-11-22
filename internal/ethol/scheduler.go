@@ -157,6 +157,11 @@ func TodayDate(t time.Time) string {
 	return t.In(WIBLocation).Format("2006-01-02")
 }
 
+// CalculateJitter adds uniform random jitter around base up to +-fraction.
+func CalculateJitter(base time.Duration, fraction float64) time.Duration {
+	return calculateJitter(base, fraction)
+}
+
 func calculateJitter(base time.Duration, fraction float64) time.Duration {
 	if base <= 0 || fraction <= 0 {
 		return base
@@ -173,4 +178,3 @@ func calculateJitter(base time.Duration, fraction float64) time.Duration {
 	}
 	return interval
 }
-

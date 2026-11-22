@@ -1,31 +1,31 @@
 # Components
 
-This document describes each module in the `internal/ethol` package.
+This document describes each module across the `internal/ethol`, `internal/telegram`, and `internal/daemon` packages.
 
 ## Module Summary
 
-| File | Primary Role |
-|---|---|
-| `config.go` | Reads and parses `.env` files. |
-| `client.go` | Creates HTTP clients with browser fingerprints and cookie jars. |
-| `auth.go` | Executes CAS single sign-on and maintains active user sessions. |
-| `courses.go` | Fetches and caches student course registrations. |
-| `presence.go` | Checks course attendance status and submits attendance codes. |
-| `scheduler.go` | Calculates scan intervals based on Western Indonesia Time (WIB). |
-| `scanner.go` | Orchestrates background scanning, worker queues, and daemon lifecycle. |
-| `commands.go` | Routes and formats Telegram bot commands. |
-| `academic.go` | Academic manager struct, cache lifecycle, and common utilities. |
-| `academic_schedule.go` | Retrieves timetable schedules, matches active courses, and formats schedule views. |
-| `academic_exams.go` | Queries UTS/UAS exam schedules and formats exam timetables. |
-| `academic_tasks.go` | Queries course assignments, validates submission status, and formats task lists. |
-| `academic_materials.go` | Fetches lecture materials, video recordings, and formats material lists. |
-| `academic_announcements.go` | Fetches campus-wide announcements and formats bulletin updates. |
-| `academic_attendance.go` | Computes attendance statistics, retrieves class rosters, and formats recap data. |
-| `academic_notif.go` | Polls ETHOL notifications, marks items as read, and handles alert dispatch with ID and 24-hour content-based deduplication for assignments. |
-| `debug.go` | Handles the `/debug` Telegram command, reporting runtime diagnostics. |
-| `log.go` | Formats colored, neat CLI log output for `slog`. |
-| `state.go` | Persists attendance keys and records to disk atomically. |
-| `telegram.go` | Sends messages and polls updates using the Telegram Bot API. |
+| Package | File | Primary Role |
+|---|---|---|
+| `internal/daemon` | `scanner.go` | Orchestrates background scanning, worker queues, and daemon lifecycle. |
+| `internal/daemon` | `commands.go` | Routes and formats Telegram bot commands. |
+| `internal/daemon` | `debug.go` | Handles the `/debug` Telegram command, reporting runtime diagnostics. |
+| `internal/daemon` | `state.go` | Persists attendance keys and records to disk atomically. |
+| `internal/telegram` | `telegram.go` | Sends messages and polls updates using the Telegram Bot API. |
+| `internal/ethol` | `config.go` | Reads and parses `.env` files. |
+| `internal/ethol` | `client.go` | Creates HTTP clients with browser fingerprints and cookie jars. |
+| `internal/ethol` | `auth.go` | Executes CAS single sign-on and maintains active user sessions. |
+| `internal/ethol` | `courses.go` | Fetches and caches student course registrations. |
+| `internal/ethol` | `presence.go` | Checks course attendance status and submits attendance codes. |
+| `internal/ethol` | `scheduler.go` | Calculates scan intervals based on Western Indonesia Time (WIB). |
+| `internal/ethol` | `academic.go` | Academic manager struct, cache lifecycle, and common utilities. |
+| `internal/ethol` | `academic_schedule.go` | Retrieves timetable schedules, matches active courses, and formats schedule views. |
+| `internal/ethol` | `academic_exams.go` | Queries UTS/UAS exam schedules and formats exam timetables. |
+| `internal/ethol` | `academic_tasks.go` | Queries course assignments, validates submission status, and formats task lists. |
+| `internal/ethol` | `academic_materials.go` | Fetches lecture materials, video recordings, and formats material lists. |
+| `internal/ethol` | `academic_announcements.go` | Fetches campus-wide announcements and formats bulletin updates. |
+| `internal/ethol` | `academic_attendance.go` | Computes attendance statistics, retrieves class rosters, and formats recap data. |
+| `internal/ethol` | `academic_notif.go` | Polls ETHOL notifications, marks items as read, and handles alert dispatch with ID and 24-hour content-based deduplication for assignments. |
+| `internal/ethol` | `log.go` | Formats colored, neat CLI log output for `slog`. |
 
 ---
 

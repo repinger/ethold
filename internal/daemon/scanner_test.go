@@ -1,4 +1,4 @@
-package ethol
+package daemon
 
 import (
 	"context"
@@ -15,6 +15,15 @@ import (
 	"testing"
 	"time"
 )
+
+type tgSendMessagePayload struct {
+	Text string `json:"text"`
+}
+
+type tgEditMessagePayload struct {
+	Text      string `json:"text"`
+	MessageID int64  `json:"message_id"`
+}
 
 func TestScannerScanOnce(t *testing.T) {
 	var (
@@ -1381,4 +1390,3 @@ func TestScanner_ScanCoursesInternal_MidCheckUnauthorizedReloadsStudentID(t *tes
 		t.Errorf("expected retried submission to send updated studentID 9999, got %d", id)
 	}
 }
-

@@ -1,4 +1,4 @@
-package ethol
+package telegram
 
 import (
 	"context"
@@ -13,6 +13,10 @@ import (
 	"testing"
 	"time"
 )
+
+func NewHTTPClient() (*http.Client, error) {
+	return &http.Client{Timeout: 10 * time.Second}, nil
+}
 
 func waitPendingDeletions(tn *TelegramNotifier) {
 	tn.deleteWg.Wait()
@@ -600,7 +604,7 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 	t.Run("auto-presence enabled", func(t *testing.T) {
 		err = tn.NotifyStartup(context.Background(), StartupInfo{
 			Version:      "v1.2.3",
-			User:         &UserInfo{Nama: "Budi Santoso", NipNrp: "3120600001"},
+			User:         &StartupUser{Nama: "Budi Santoso", NipNrp: "3120600001"},
 			AutoPresence: true,
 			WorkerCount:  4,
 			TotalRecords: 10,
@@ -640,7 +644,7 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 		tnTopics.SetThreadIDs(2, 4)
 		err = tnTopics.NotifyStartup(context.Background(), StartupInfo{
 			Version:      "v1.2.3",
-			User:         &UserInfo{Nama: "Budi Santoso", NipNrp: "3120600001"},
+			User:         &StartupUser{Nama: "Budi Santoso", NipNrp: "3120600001"},
 			AutoPresence: true,
 			WorkerCount:  4,
 		})
@@ -727,7 +731,7 @@ func TestTelegramNotifier_NotifyStartup(t *testing.T) {
 		// Now edit via NotifyStartup
 		err = sTn.NotifyStartup(context.Background(), StartupInfo{
 			Version:       "v1.0.0",
-			User:          &UserInfo{Nama: "Budi", NipNrp: "12345"},
+			User:          &StartupUser{Nama: "Budi", NipNrp: "12345"},
 			AutoPresence:  true,
 			WorkerCount:   2,
 			EditMessageID: msgID,
@@ -2191,5 +2195,42 @@ func BenchmarkTelegram_SendMessageIDs(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_, _ = tn.SendMessageIDs(ctx, msg)
+	}
+}
+
+func TestTelegramNotifier_NotifyPresenceSuccess(t *testing.T) {
+	var sentPayload tgSendMessagePayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/bot12345/sendMessage" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&sentPayload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tn := NewTelegramNotifier(client, server.URL, "12345", "999888")
+	ctx := context.Background()
+
+	err = tn.NotifyPresenceSuccess(ctx, "Matematika Diskrit", "Dr. Budi", "key-999", "Presensi berhasil")
+	if err != nil {
+		t.Fatalf("notify presence success err: %v", err)
+	}
+
+	if sentPayload.ChatID != "999888" {
+		t.Errorf("expected chat id 999888, got %s", sentPayload.ChatID)
+	}
+	if sentPayload.ParseMode != "HTML" {
+		t.Errorf("expected HTML parse mode, got %s", sentPayload.ParseMode)
 	}
 }

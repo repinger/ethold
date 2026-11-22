@@ -1,4 +1,4 @@
-package ethol
+package daemon
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/repinger/ethold/internal/ethol"
 )
 
 func TestStateManager(t *testing.T) {
@@ -221,7 +223,7 @@ func TestStateManager_DailyPruneDeduplication(t *testing.T) {
 		t.Fatalf("NewStateManager failed: %v", err)
 	}
 
-	today := TodayDate(NowWIB())
+	today := ethol.TodayDate(ethol.NowWIB())
 
 	// First AddRecord should trigger prune and set lastPruneDate
 	err = sm.AddRecord(PresenceRecord{Key: "today_rec", Date: today})
@@ -323,12 +325,11 @@ func TestStateManager_AddRecord_UsesWIBDate(t *testing.T) {
 		t.Fatal("record not found")
 	}
 
-	expectedDate := TodayDate(NowWIB())
+	expectedDate := ethol.TodayDate(ethol.NowWIB())
 	if rec.Date != expectedDate {
 		t.Errorf("expected date %q (WIB), got %q", expectedDate, rec.Date)
 	}
 }
-
 
 func BenchmarkStateManager_CountWithPrefix(b *testing.B) {
 	sm := &StateManager{
@@ -427,4 +428,3 @@ func BenchmarkStateManager_NewStateManager_10k(b *testing.B) {
 		}
 	}
 }
-

@@ -29,5 +29,3 @@ func DefaultLogLevel() slog.Level {
 func devLog(_ string, _ ...any) {}
 
 func devLogHTTP(_, _ string, _ int, _ time.Duration, _ error) {}
-
-func devLogTelegramCommand(_ int64, _, _ string, _ time.Duration, _ int, _ error) {}

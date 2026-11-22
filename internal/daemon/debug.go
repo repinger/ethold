@@ -1,4 +1,4 @@
-package ethol
+package daemon
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/repinger/ethold/internal/ethol"
 )
 
 func (s *Scanner) handleDebug(ctx context.Context) string {
@@ -28,7 +30,7 @@ func (s *Scanner) handleDebug(ctx context.Context) string {
 	} else if !status.LastScanTime.IsZero() {
 		durStr := status.LastScanDuration.Round(time.Millisecond).String()
 		lastScanStr = fmt.Sprintf("%s (%s) - %s",
-			status.LastScanTime.In(WIBLocation).Format("15:04:05 WIB"),
+			status.LastScanTime.In(ethol.WIBLocation).Format("15:04:05 WIB"),
 			durStr,
 			formatScanOutcome(status.LastScanErr, status.LastAttended),
 		)

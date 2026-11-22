@@ -1,4 +1,4 @@
-package ethol
+package daemon
 
 import (
 	"bufio"
@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/repinger/ethold/internal/ethol"
 )
 
 // DefaultRetentionDays is the default duration for state record retention (approx 1 semester).
@@ -43,12 +45,12 @@ type StateManager struct {
 
 func parseRecordDate(key string, rec PresenceRecord) (time.Time, bool) {
 	if rec.Date != "" {
-		if t, err := time.ParseInLocation("2006-01-02", rec.Date, WIBLocation); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", rec.Date, ethol.WIBLocation); err == nil {
 			return t, true
 		}
 	}
 	if len(key) >= 10 && key[4] == '-' && key[7] == '-' {
-		if t, err := time.ParseInLocation("2006-01-02", key[:10], WIBLocation); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", key[:10], ethol.WIBLocation); err == nil {
 			return t, true
 		}
 	}
@@ -120,10 +122,10 @@ func NewStateManager(path string, retentionDays ...int) (*StateManager, error) {
 	}
 
 	if sm.retentionDays > 0 {
-		now := NowWIB()
+		now := ethol.NowWIB()
 		cutoff := now.AddDate(0, 0, -sm.retentionDays)
 		sm.pruneLocked(cutoff)
-		sm.lastPruneDate = TodayDate(now)
+		sm.lastPruneDate = ethol.TodayDate(now)
 	}
 
 	return sm, nil
@@ -195,7 +197,7 @@ func (sm *StateManager) AddRecord(recs ...PresenceRecord) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	nowDate := TodayDate(NowWIB())
+	nowDate := ethol.TodayDate(ethol.NowWIB())
 	for _, rec := range recs {
 		if rec.Date == "" {
 			if t, ok := parseRecordDate(rec.Key, rec); ok {
@@ -212,8 +214,8 @@ func (sm *StateManager) AddRecord(recs ...PresenceRecord) error {
 
 func (sm *StateManager) saveLocked() error {
 	if sm.retentionDays > 0 {
-		now := NowWIB()
-		today := TodayDate(now)
+		now := ethol.NowWIB()
+		today := ethol.TodayDate(now)
 		if today != sm.lastPruneDate {
 			cutoff := now.AddDate(0, 0, -sm.retentionDays)
 			sm.pruneLocked(cutoff)

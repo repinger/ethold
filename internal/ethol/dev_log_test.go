@@ -11,8 +11,6 @@ func TestDevLogFunctions(t *testing.T) {
 	devLog("test message", "key", "val")
 	devLogHTTP("GET", "https://ethol.pens.ac.id/api/test", 200, 10*time.Millisecond, nil)
 	devLogHTTP("POST", "https://ethol.pens.ac.id/api/test", 500, 20*time.Millisecond, errors.New("network error"))
-	devLogTelegramCommand(12345, "/status", "/status", 5*time.Millisecond, 50, nil)
-	devLogTelegramCommand(12345, "/error", "/error", 5*time.Millisecond, 0, errors.New("send failed"))
 }
 
 func TestDevBuildFlag(t *testing.T) {

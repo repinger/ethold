@@ -1,4 +1,4 @@
-package ethol
+package telegram
 
 import (
 	"bytes"
@@ -8,12 +8,29 @@ import (
 	"html"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+var wibZone = time.FixedZone("WIB", 7*3600)
+
+func nowWIB() time.Time {
+	return time.Now().In(wibZone)
+}
+
+func calculateJitter(base time.Duration, fraction float64) time.Duration {
+	if base <= 0 || fraction <= 0 {
+		return base
+	}
+	delta := float64(base) * fraction
+	minVal := float64(base) - delta
+	maxVal := float64(base) + delta
+	return time.Duration(minVal + rand.Float64()*(maxVal-minVal))
+}
 
 type chatRateLimiter struct {
 	mu           sync.Mutex
@@ -76,6 +93,12 @@ type TelegramNotifier struct {
 	deleteWg        sync.WaitGroup
 	markupMu        sync.RWMutex
 	replyMarkup     any
+}
+
+type Notifier = TelegramNotifier
+
+func NewNotifier(client *http.Client, baseURL, token, chatID string) *Notifier {
+	return NewTelegramNotifier(client, baseURL, token, chatID)
 }
 
 func NewTelegramNotifier(client *http.Client, baseURL, token, chatID string) *TelegramNotifier {
@@ -438,7 +461,7 @@ func (tn *TelegramNotifier) EditMessageText(ctx context.Context, messageID int64
 }
 
 func (tn *TelegramNotifier) NotifyPresenceSuccess(ctx context.Context, mkName, dosen, key, respMsg string) error {
-	waktuStr := NowWIB().Format(wibTimestampLayout)
+	waktuStr := nowWIB().Format(wibTimestampLayout)
 	msg := fmt.Sprintf(
 		"🎉 <b>PRESENSI BERHASIL DICATAT!</b>\n\n"+
 			"📚 <b>Mata Kuliah:</b> %s\n"+
@@ -465,7 +488,7 @@ func (tn *TelegramNotifier) NotifyPresenceSuccess(ctx context.Context, mkName, d
 }
 
 func (tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) error {
-	waktuStr := NowWIB().Format(wibTimestampLayout)
+	waktuStr := nowWIB().Format(wibTimestampLayout)
 	msg := fmt.Sprintf(
 		"⚠️ <b>GANGGUAN SERVER ETHOL</b>\n\n"+
 			"🕒 <b>Waktu:</b> %s\n"+
@@ -486,7 +509,7 @@ func (tn *TelegramNotifier) NotifyServerError(ctx context.Context, err error) er
 }
 
 func (tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error {
-	waktuStr := NowWIB().Format(wibTimestampLayout)
+	waktuStr := nowWIB().Format(wibTimestampLayout)
 	msg := fmt.Sprintf(
 		"✅ <b>LAYANAN ETHOL PULIH</b>\n\n"+
 			"🕒 <b>Waktu:</b> %s\n"+
@@ -505,7 +528,7 @@ func (tn *TelegramNotifier) NotifyServerRecovery(ctx context.Context) error {
 }
 
 func (tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) error {
-	waktuStr := NowWIB().Format(wibTimestampLayout)
+	waktuStr := nowWIB().Format(wibTimestampLayout)
 	msg := fmt.Sprintf(
 		"🚨 <b>GAGAL AUTENTIKASI</b>\n\n"+
 			"🕒 <b>Waktu:</b> %s\n"+
@@ -525,20 +548,25 @@ func (tn *TelegramNotifier) NotifyAuthFailure(ctx context.Context, err error) er
 	return nil
 }
 
+type StartupUser struct {
+	Nama   string
+	NipNrp string
+}
+
 type StartupInfo struct {
-	Version      string
-	User         *UserInfo
-	AutoPresence bool
-	WorkerCount  int
-	TotalRecords int
-	TodayRecords int
+	Version       string
+	User          *StartupUser
+	AutoPresence  bool
+	WorkerCount   int
+	TotalRecords  int
+	TodayRecords  int
 	ScanInterval  time.Duration
 	InScanWindow  bool
 	EditMessageID int64
 }
 
 func (tn *TelegramNotifier) NotifyStarting(ctx context.Context, info StartupInfo) (int64, error) {
-	waktuStr := NowWIB().Format(wibTimestampLayout)
+	waktuStr := nowWIB().Format(wibTimestampLayout)
 
 	verStr := info.Version
 	if verStr == "" {
@@ -576,7 +604,7 @@ func (tn *TelegramNotifier) NotifyStarting(ctx context.Context, info StartupInfo
 }
 
 func (tn *TelegramNotifier) NotifyStartup(ctx context.Context, info StartupInfo) error {
-	waktuStr := NowWIB().Format(wibTimestampLayout)
+	waktuStr := nowWIB().Format(wibTimestampLayout)
 
 	userStr := "Tidak diketahui"
 	if info.User != nil {

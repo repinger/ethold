@@ -14,7 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/repinger/ethold/internal/daemon"
 	"github.com/repinger/ethold/internal/ethol"
+	"github.com/repinger/ethold/internal/telegram"
 )
 
 var version = ""
@@ -151,18 +153,18 @@ func run() error {
 	auth := ethol.NewAuthManager(client, baseURL, cfg.Username, cfg.Password)
 	courses := ethol.NewCourseManager(client, baseURL, 10*time.Minute)
 	academic := ethol.NewAcademicManager(client, baseURL, 10*time.Minute)
-	notifier := ethol.NewTelegramNotifier(client, "", cfg.TelegramToken, cfg.TelegramChatID)
+	notifier := telegram.NewNotifier(client, "", cfg.TelegramToken, cfg.TelegramChatID)
 	notifier.SetThreadIDs(cfg.TelegramCommandThreadID, cfg.TelegramNotifThreadID)
 
 	var (
-		state    *ethol.StateManager
+		state    *daemon.StateManager
 		presence *ethol.PresenceEngine
 	)
 	if *stateRetentionDays > 0 {
 		cfg.StateRetentionDays = *stateRetentionDays
 	}
 	if cfg.AutoPresence {
-		state, err = ethol.NewStateManager(*statePath, cfg.StateRetentionDays)
+		state, err = daemon.NewStateManager(*statePath, cfg.StateRetentionDays)
 		if err != nil {
 			slog.Error("Failed to initialize state manager", "path", *statePath, "error", err)
 			return err
@@ -172,7 +174,7 @@ func run() error {
 		slog.Info("Auto-presence disabled, running in academic-only mode")
 	}
 
-	scanner := ethol.NewScanner(auth, courses, presence, academic, state, notifier, *concurrency)
+	scanner := daemon.NewScanner(auth, courses, presence, academic, state, notifier, *concurrency)
 	authReady := make(chan struct{})
 	scanner.SetAuthReady(authReady)
 
@@ -202,14 +204,14 @@ func run() error {
 
 	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
 		if cfg.AutoPresence {
-			notifier.SetInlineKeyboard([][]ethol.InlineButton{
+			notifier.SetInlineKeyboard([][]telegram.InlineButton{
 				{{Text: "📅 Jadwal", Data: "/jadwal"}, {Text: "📝 Tugas", Data: "/tugas"}},
 				{{Text: "👥 Presensi Kelas", Data: "/presensi_kelas"}, {Text: "📊 Rekap", Data: "/rekap"}},
 				{{Text: "⚡ Scan Presensi", Data: "/check"}, {Text: "📌 Hari Ini", Data: "/today"}},
 				{{Text: "ℹ️ Status", Data: "/status"}, {Text: "❓ Bantuan", Data: "/help"}},
 			})
 		} else {
-			notifier.SetInlineKeyboard([][]ethol.InlineButton{
+			notifier.SetInlineKeyboard([][]telegram.InlineButton{
 				{{Text: "📅 Jadwal", Data: "/jadwal"}, {Text: "📝 Tugas", Data: "/tugas"}},
 				{{Text: "🎓 Ujian", Data: "/ujian"}, {Text: "📊 Rekap", Data: "/rekap"}},
 				{{Text: "📚 Materi", Data: "/materi"}, {Text: "📢 Pengumuman", Data: "/pengumuman"}},

@@ -5,7 +5,10 @@ This document describes the software design and runtime behavior of the system.
 ## System Overview
 
 The system is a single binary written in Go.
-All domain logic lives in one package: `internal/ethol`.
+The codebase is organized into three focused packages:
+- `internal/ethol`: Domain client for ETHOL & CAS SSO (authentication, courses, presence engine, academic manager, scheduler, and HTTP transport).
+- `internal/telegram`: Telegram Bot API client, rate limiting, long-polling, and inline keyboards.
+- `internal/daemon`: Scanner loop, worker pool, attendance state persistence, and Telegram command dispatcher.
 The program runs as a long-lived service or as a single-scan command.
 
 ## Component Diagram

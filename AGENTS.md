@@ -8,18 +8,18 @@ Operating modes:
 - **Academic-Only Mode** (default): Disables scanning and submission loops. Provides interactive Telegram bot commands and notification polling only.
 
 ## Architecture & Data Flow
-The daemon uses a flat, single-package architecture (`internal/ethol`) centered on the `Scanner` orchestrator.
+The daemon is structured into three packages: `internal/ethol` (ETHOL domain client & scrapers), `internal/telegram` (Telegram Bot API wrapper), and `internal/daemon` (Scanner orchestrator & attendance state).
 
 ### Component Structure
 - **Entry Point (`cmd/ethold/main.go`)**: Parses CLI flags and `.env` configuration, binds OS signal cancellation, initializes service singletons, starts background workers, and executes single-pass or continuous scanning.
-- **HTTP Transport (`client.go`)**: Manages `http.Client` with `syncCookieJar` (thread-safe cookie storage) and `headerTransport` (browser profile rotation and header spoofing for `*.pens.ac.id`).
-- **Authentication Engine (`auth.go`)**: Coordinates the four-step CAS login flow (redirect, HTML form parsing, credential POST, token validation) and session refreshes. Employs double-checked locking with `refreshMu` and `mu`.
-- **Presence Engine (`presence.go`)**: Queries `/api/presensi/aktif-kuliah`, extracts session keys using `bytes.Buffer` pools, and sends attendance submissions to `/api/presensi/mahasiswa`.
-- **Scheduler & Planner (`scheduler.go`)**: Hardcodes Western Indonesia Time (WIB, UTC+7). Calculates daily lecture scan windows with 15-minute lead and 20-minute trail buffers.
-- **Scanner Daemon (`scanner.go`)**: Coordinates scan loops, worker pool concurrency, random submission jitter (2 to 10 seconds), and error recovery (session re-login on HTTP 401).
-- **Academic Manager (`academic.go`, `academic_*.go`)**: Manages generic in-memory caches (`cacheEntry[T]`) with TTL expiration for schedules, assignments, materials, announcements, exams, and attendance statistics.
-- **Telegram Interface (`telegram.go`, `commands.go`)**: Routes inbound bot updates, enforces token bucket rate limiting, separates notifications and commands by thread ID, and edits messages in place with `editMessageText`.
-- **State Storage (`state.go`)**: Provides thread-safe, atomic JSON file persistence for attended lecture keys.
+- **HTTP Transport (`internal/ethol/client.go`)**: Manages `http.Client` with `syncCookieJar` (thread-safe cookie storage) and `headerTransport` (browser profile rotation and header spoofing for `*.pens.ac.id`).
+- **Authentication Engine (`internal/ethol/auth.go`)**: Coordinates the four-step CAS login flow (redirect, HTML form parsing, credential POST, token validation) and session refreshes. Employs double-checked locking with `refreshMu` and `mu`.
+- **Presence Engine (`internal/ethol/presence.go`)**: Queries `/api/presensi/aktif-kuliah`, extracts session keys using `bytes.Buffer` pools, and sends attendance submissions to `/api/presensi/mahasiswa`.
+- **Scheduler & Planner (`internal/ethol/scheduler.go`)**: Hardcodes Western Indonesia Time (WIB, UTC+7). Calculates daily lecture scan windows with 15-minute lead and 20-minute trail buffers.
+- **Scanner Daemon (`internal/daemon/scanner.go`)**: Coordinates scan loops, worker pool concurrency, random submission jitter (2 to 10 seconds), and error recovery (session re-login on HTTP 401).
+- **Academic Manager (`internal/ethol/academic.go`, `academic_*.go`)**: Manages generic in-memory caches (`cacheEntry[T]`) with TTL expiration for schedules, assignments, materials, announcements, exams, and attendance statistics.
+- **Telegram Interface (`internal/telegram/telegram.go`, `internal/daemon/commands.go`)**: Routes inbound bot updates, enforces token bucket rate limiting, separates notifications and commands by thread ID, and edits messages in place with `editMessageText`.
+- **State Storage (`internal/daemon/state.go`)**: Provides thread-safe, atomic JSON file persistence for attended lecture keys.
 
 ### Data Flow
 ```
@@ -42,7 +42,9 @@ TelegramNotifier (delivers alert or updates message in topic thread)
 
 ## Key Directories
 - `cmd/ethold/`: Application entry point and build-tagged pprof listeners (`main.go`, `pprof_dev.go`, `pprof_release.go`).
-- `internal/ethol/`: Domain logic, API clients, HTML extractors, scheduler, scanner, and Telegram bot handlers.
+- `internal/ethol/`: Domain logic, CAS SSO auth, API clients, academic manager, and scheduler.
+- `internal/telegram/`: Telegram Bot API client, rate limiting, inline keyboards, and long-polling.
+- `internal/daemon/`: Scanner orchestrator daemon, attendance state manager, and Telegram command dispatcher.
 - `docs/`: Technical documentation covering architecture, component details, API reference, authentication, and deployment.
 - `.agents/skills/`: Installed agent skills for development workflows.
 
@@ -81,13 +83,13 @@ go test -tags dev -v ./...
 go test -v -run TestCheckCourse ./internal/ethol
 
 # Run soak and memory leak gating check
-go test -v -count=1 -run TestSoakMemory ./internal/ethol
+go test -v -count=1 -run TestSoakMemory ./internal/daemon
 
 # Run all benchmarks
-go test -run='^$' -bench=. -benchmem ./internal/ethol
+go test -run='^$' -bench=. -benchmem ./...
 
 # Run specific benchmark
-go test -run='^$' -bench=BenchmarkScanner_ScanOnce_10Courses -benchmem ./internal/ethol
+go test -run='^$' -bench=BenchmarkScanner_ScanOnce_10Courses -benchmem ./internal/daemon
 ```
 
 ### Lint & Code Quality
@@ -150,10 +152,11 @@ go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./...
 - `internal/ethol/auth.go`: CAS SSO login lifecycle and session refresh handlers.
 - `internal/ethol/presence.go`: Presence session detection and attendance submission engine.
 - `internal/ethol/scheduler.go`: WIB timetable window computations and scan interval planning.
-- `internal/ethol/scanner.go`: Main daemon loop, worker pool management, and retry handling.
-- `internal/ethol/commands.go`: Telegram command routing, rate limiting, and response templates.
-- `internal/ethol/state.go`: Atomic JSON file persistence for attended keys.
 - `internal/ethol/config.go`: Custom `.env` parser implementation without third-party dependencies.
+- `internal/telegram/telegram.go`: Telegram Bot API wrapper, rate limiting, and polling poller.
+- `internal/daemon/scanner.go`: Main daemon loop, worker pool management, and retry handling.
+- `internal/daemon/commands.go`: Telegram command routing, rate limiting, and response templates.
+- `internal/daemon/state.go`: Atomic JSON file persistence for attended keys.
 - `.golangci.yml`: Strict linter configuration for CI and local verification.
 - `Dockerfile`: Multi-stage distroless build specifying `GOMEMLIMIT=48MiB`.
 
@@ -180,7 +183,7 @@ go run golang.org/x/tools/cmd/deadcode@latest -tags dev ./...
 ### Soak & Memory Leak Gating (`TestSoakMemory`)
 Run the soak test before completing changes:
 ```bash
-go test -v -count=1 -run TestSoakMemory ./internal/ethol
+go test -v -count=1 -run TestSoakMemory ./internal/daemon
 ```
 Mandatory gating criteria:
 1. **Zero Net Goroutine Growth**: `goroutinesEnd <= goroutinesStart`.
@@ -189,7 +192,7 @@ Mandatory gating criteria:
 ### Benchmark Regression Gating
 Run benchmarks before and after modifying performance-sensitive code:
 ```bash
-go test -run='^$' -bench=. -benchmem ./internal/ethol
+go test -run='^$' -bench=. -benchmem ./...
 ```
 Do not introduce regressions in execution time (`ns/op`), memory allocation (`B/op`), or allocation counts (`allocs/op`).
 

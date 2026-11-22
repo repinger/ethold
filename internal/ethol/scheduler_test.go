@@ -1,10 +1,6 @@
 package ethol
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -136,43 +132,6 @@ func TestNextScanPlan(t *testing.T) {
 	plan = NextScanPlan(time.Date(2024, 1, 15, 16, 0, 0, 0, WIBLocation), windows)
 	if plan.InWindow || plan.Interval != BackgroundInterval || len(plan.Courses) != 0 {
 		t.Errorf("expected background plan after windows, got %+v", plan)
-	}
-}
-
-func TestTelegramNotifier(t *testing.T) {
-	var sentPayload tgSendMessagePayload
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/bot12345/sendMessage" {
-			http.NotFound(w, r)
-			return
-		}
-		if err := json.NewDecoder(r.Body).Decode(&sentPayload); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
-	}))
-	defer server.Close()
-
-	client, err := NewHTTPClient()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tn := NewTelegramNotifier(client, server.URL, "12345", "999888")
-	ctx := context.Background()
-
-	err = tn.NotifyPresenceSuccess(ctx, "Matematika Diskrit", "Dr. Budi", "key-999", "Presensi berhasil")
-	if err != nil {
-		t.Fatalf("notify presence success err: %v", err)
-	}
-
-	if sentPayload.ChatID != "999888" {
-		t.Errorf("expected chat id 999888, got %s", sentPayload.ChatID)
-	}
-	if sentPayload.ParseMode != "HTML" {
-		t.Errorf("expected HTML parse mode, got %s", sentPayload.ParseMode)
 	}
 }
 

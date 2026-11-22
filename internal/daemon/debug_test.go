@@ -1,4 +1,4 @@
-package ethol
+package daemon
 
 import (
 	"context"
@@ -11,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/repinger/ethold/internal/ethol"
+	"github.com/repinger/ethold/internal/telegram"
 )
 
 func TestScanner_HandleTelegramCommand_Debug(t *testing.T) {
@@ -51,16 +54,16 @@ func TestScanner_HandleTelegramCommand_Debug(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client, err := NewHTTPClient()
+	client, err := ethol.NewHTTPClient()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	auth := NewAuthManager(client, server.URL, "user", "pass")
-	courses := NewCourseManager(client, server.URL, 10*time.Minute)
-	presence := NewPresenceEngine(client, server.URL)
-	academic := NewAcademicManager(client, server.URL, 10*time.Minute)
-	notifier := NewTelegramNotifier(client, server.URL, "token", "123")
+	auth := ethol.NewAuthManager(client, server.URL, "user", "pass")
+	courses := ethol.NewCourseManager(client, server.URL, 10*time.Minute)
+	presence := ethol.NewPresenceEngine(client, server.URL)
+	academic := ethol.NewAcademicManager(client, server.URL, 10*time.Minute)
+	notifier := telegram.NewNotifier(client, server.URL, "token", "123")
 
 	ctx := context.Background()
 	_, err = auth.Login(ctx)

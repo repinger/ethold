@@ -1,4 +1,4 @@
-package ethol
+package daemon
 
 import (
 	"context"
